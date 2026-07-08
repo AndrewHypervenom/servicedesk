@@ -1,0 +1,216 @@
+import { supabase } from './supabase';
+import type {
+  Equipo, Colaborador, Proveedor, Movimiento, Acta, Perfil, Integracion,
+  TipoMovimiento, EstadoAsignacion, RolUsuario, Pais, Sede, Marca,
+} from '@/types';
+
+export async function listEquipos(): Promise<Equipo[]> {
+  const { data, error } = await supabase.from('equipos').select('*').order('creado_en', { ascending: false });
+  if (error) throw error;
+  return data as Equipo[];
+}
+
+export async function getEquipo(id: string): Promise<Equipo | null> {
+  const { data, error } = await supabase.from('equipos').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return (data as Equipo) ?? null;
+}
+
+export async function findByCode(code: string): Promise<Equipo | null> {
+  const c = code.trim().toUpperCase();
+  const { data } = await supabase.from('equipos').select('*')
+    .or(`codigo_qr.eq.${c},serial.eq.${c}`).limit(1);
+  return (data?.[0] as Equipo) ?? null;
+}
+
+export async function createEquipo(e: Partial<Equipo>): Promise<Equipo> {
+  const { data, error } = await supabase.from('equipos').insert(e).select().single();
+  if (error) throw error;
+  await supabase.rpc('registrar_movimiento', {
+    p_equipo_id: (data as Equipo).id, p_tipo: 'RECEPCION', p_estado_nuevo: 'DISPONIBLE',
+  });
+  if (e.marca) await ensureMarca(e.marca);
+  return data as Equipo;
+}
+
+export async function updateEquipo(id: string, patch: Partial<Equipo>): Promise<void> {
+  const { error } = await supabase.from('equipos').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function trazabilidad(equipoId: string): Promise<Movimiento[]> {
+  const { data, error } = await supabase.rpc('trazabilidad_equipo', { p_equipo_id: equipoId });
+  if (error) throw error;
+  return data as Movimiento[];
+}
+
+export async function recentMovimientos(limit = 8): Promise<Movimiento[]> {
+  const { data } = await supabase.from('movimientos').select('*').order('creado_en', { ascending: false }).limit(limit);
+  return (data as Movimiento[]) ?? [];
+}
+
+export async function asignarEquipo(p: {
+  equipoId: string; cedula: string; proyecto: string; actaId?: string; registradoPor?: string; obs?: string;
+}): Promise<void> {
+  const { error } = await supabase.rpc('asignar_equipo', {
+    p_equipo_id: p.equipoId, p_cedula: p.cedula, p_proyecto: p.proyecto,
+    p_acta_id: p.actaId ?? null, p_registrado_por: p.registradoPor ?? null, p_observaciones: p.obs ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function devolverEquipo(p: {
+  equipoId: string; aProveedor: boolean; proveedor?: string; actaId?: string; registradoPor?: string; obs?: string;
+}): Promise<void> {
+  const { error } = await supabase.rpc('devolver_equipo', {
+    p_equipo_id: p.equipoId, p_a_proveedor: p.aProveedor, p_proveedor: p.proveedor ?? null,
+    p_acta_id: p.actaId ?? null, p_registrado_por: p.registradoPor ?? null, p_observaciones: p.obs ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function registrarMovimiento(p: {
+  equipoId: string; tipo: TipoMovimiento; estadoNuevo?: EstadoAsignacion; proyectoDestino?: string;
+  proveedor?: string; obs?: string;
+}): Promise<void> {
+  const { error } = await supabase.rpc('registrar_movimiento', {
+    p_equipo_id: p.equipoId, p_tipo: p.tipo, p_estado_nuevo: p.estadoNuevo ?? null,
+    p_proyecto_destino: p.proyectoDestino ?? null, p_proveedor: p.proveedor ?? null, p_observaciones: p.obs ?? null,
+  });
+  if (error) throw error;
+}
+
+export async function listColaboradores(): Promise<Colaborador[]> {
+  const { data } = await supabase.from('colaboradores').select('*').order('nombre');
+  return (data as Colaborador[]) ?? [];
+}
+export async function getColaborador(cedula: string): Promise<Colaborador | null> {
+  const { data } = await supabase.from('colaboradores').select('*').eq('cedula', cedula.trim()).maybeSingle();
+  return (data as Colaborador) ?? null;
+}
+export async function upsertColaborador(c: Colaborador): Promise<void> {
+  const { error } = await supabase.from('colaboradores').upsert(c);
+  if (error) throw error;
+}
+
+export async function listProveedores(): Promise<Proveedor[]> {
+  const { data } = await supabase.from('proveedores').select('*').order('nombre');
+  return (data as Proveedor[]) ?? [];
+}
+export async function createProveedor(p: Partial<Proveedor>): Promise<void> {
+  const { error } = await supabase.from('proveedores').insert(p);
+  if (error) throw error;
+}
+
+export async function listMarcas(): Promise<Marca[]> {
+  const { data } = await supabase.from('marcas').select('*').order('nombre');
+  return (data as Marca[]) ?? [];
+}
+export async function ensureMarca(nombre: string): Promise<void> {
+  const n = nombre.trim();
+  if (!n) return;
+  await supabase.from('marcas').upsert({ nombre: n }, { onConflict: 'nombre', ignoreDuplicates: true });
+}
+
+export async function createActa(a: Partial<Acta>): Promise<Acta> {
+  const { data, error } = await supabase.from('actas').insert(a).select().single();
+  if (error) throw error;
+  return data as Acta;
+}
+
+export async function updateActa(id: string, patch: Partial<Acta>): Promise<void> {
+  const { error } = await supabase.from('actas').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+export async function subirActaFirmada(actaId: string, file: File): Promise<string | null> {
+  const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
+  const path = `${actaId}-firmada.${ext}`;
+  const { error } = await supabase.storage.from('actas')
+    .upload(path, file, { upsert: true, contentType: file.type || 'application/pdf' });
+  if (error) throw error;
+  const { data } = supabase.storage.from('actas').getPublicUrl(path);
+  await supabase.from('actas').update({ archivo_firmado_url: data.publicUrl, firmado: true }).eq('id', actaId);
+  return data.publicUrl;
+}
+
+export async function listActas(): Promise<Acta[]> {
+  const { data } = await supabase.from('actas').select('*').order('creado_en', { ascending: false });
+  return (data as Acta[]) ?? [];
+}
+
+export async function subirPdfActa(actaId: string, blob: Blob): Promise<string | null> {
+  const path = `${actaId}.pdf`;
+  const { error } = await supabase.storage.from('actas').upload(path, blob, { upsert: true, contentType: 'application/pdf' });
+  if (error) throw error;
+  const { data } = supabase.storage.from('actas').getPublicUrl(path);
+  await supabase.from('actas').update({ pdf_url: data.publicUrl }).eq('id', actaId);
+  return data.publicUrl;
+}
+
+export async function listIntegraciones(): Promise<Integracion[]> {
+  const { data } = await supabase.from('integraciones').select('*').order('creado_en', { ascending: false });
+  return (data as Integracion[]) ?? [];
+}
+export async function createIntegracion(i: Partial<Integracion>): Promise<void> {
+  const { error } = await supabase.from('integraciones').insert(i);
+  if (error) throw error;
+}
+
+export async function listPerfiles(): Promise<Perfil[]> {
+  const { data } = await supabase.from('perfiles').select('*').order('nombre');
+  return (data as Perfil[]) ?? [];
+}
+export async function updateRol(id: string, rol: Perfil['rol']): Promise<void> {
+  const { error } = await supabase.from('perfiles').update({ rol }).eq('id', id);
+  if (error) throw error;
+}
+export async function updateSedeUsuario(id: string, sedeId: string | null): Promise<void> {
+  const { error } = await supabase.from('perfiles').update({ sede_id: sedeId }).eq('id', id);
+  if (error) throw error;
+}
+
+export async function crearUsuario(p: {
+  email: string; nombre: string; rol: RolUsuario;
+  cedula?: string; sedeId?: string | null;
+}): Promise<{ email: string; password: string }> {
+  const { data, error } = await supabase.functions.invoke('crear-usuario', {
+    body: { email: p.email, nombre: p.nombre, rol: p.rol, cedula: p.cedula, sede_id: p.sedeId ?? null },
+  });
+  if (error) {
+    let msg = error.message;
+    try { const ctx = await (error as any).context?.json(); if (ctx?.error) msg = ctx.error; } catch { /* noop */ }
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return { email: data.email, password: data.password };
+}
+
+export async function listPaises(): Promise<Pais[]> {
+  const { data } = await supabase.from('paises').select('*').order('nombre');
+  return (data as Pais[]) ?? [];
+}
+export async function createPais(nombre: string, codigo?: string): Promise<void> {
+  const { error } = await supabase.from('paises').insert({ nombre, codigo: codigo || null });
+  if (error) throw error;
+}
+export async function deletePais(id: string): Promise<void> {
+  const { error } = await supabase.from('paises').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function listSedes(): Promise<Sede[]> {
+  const { data } = await supabase.from('sedes').select('*, paises(nombre)').order('nombre');
+  return ((data as any[]) ?? []).map((s) => ({
+    id: s.id, nombre: s.nombre, pais_id: s.pais_id, creado_en: s.creado_en,
+    pais_nombre: s.paises?.nombre ?? null,
+  }));
+}
+export async function createSede(nombre: string, paisId: string): Promise<void> {
+  const { error } = await supabase.from('sedes').insert({ nombre, pais_id: paisId });
+  if (error) throw error;
+}
+export async function deleteSede(id: string): Promise<void> {
+  const { error } = await supabase.from('sedes').delete().eq('id', id);
+  if (error) throw error;
+}
