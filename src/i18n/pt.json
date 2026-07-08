@@ -241,7 +241,10 @@
   "form": {
     "newTitle": "Registrar novo equipamento",
     "newSub": "O estado inicial será DISPONÍVEL por padrão",
+    "editTitle": "Editar equipamento",
+    "editSub": "Modifique os dados do equipamento",
     "saved": "Equipamento registrado com sucesso",
+    "updated": "Equipamento atualizado com sucesso",
     "requiredFields": "Preencha os campos obrigatórios",
     "pickOrType": "Escolha um ou digite um novo"
   },

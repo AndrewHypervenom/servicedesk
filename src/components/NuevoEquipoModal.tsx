@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useQuery } from '@tanstack/react-query';
-import { createEquipo, listSedes, listMarcas, listProveedores } from '@/lib/api';
+import { createEquipo, updateEquipo, listSedes, listMarcas, listProveedores } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { toast } from '@/components/ui/Toast';
@@ -12,48 +12,83 @@ const TIPOS = ['PORTATIL', 'ESCRITORIO', 'CELULAR', 'MONITOR', 'PERIFERICO', 'BA
 const FISICOS = ['BUENO', 'REGULAR', 'DANADO'];
 const PROPIEDADES = ['EMPRESA', 'PROYECTO', 'RENTADO', 'COMODATO'];
 
-export function NuevoEquipoModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
+// Definido fuera del componente: si estuviera dentro, React lo remontaría
+// en cada tecla y el input perdería el foco (no dejaría escribir).
+function Field({ label, k, f, set, type = 'text', req }: {
+  label: string; k: keyof Equipo; f: Partial<Equipo>;
+  set: (k: keyof Equipo, v: any) => void; type?: string; req?: boolean;
+}) {
+  return (
+    <div>
+      <label className="label">{label}{req && <span className="text-danger"> *</span>}</label>
+      <input
+        type={type}
+        className="input"
+        value={(f[k] as string) ?? ''}
+        onChange={(e) => set(k, type === 'number' ? Number(e.target.value) : e.target.value)}
+      />
+    </div>
+  );
+}
+
+// Campos que se pueden editar (excluye id, codigo_qr, estado_asignacion, fechas del sistema, etc.)
+const EDITABLES: (keyof Equipo)[] = [
+  'marca', 'linea_modelo', 'descripcion_completa', 'serial', 'tipo', 'estado_fisico',
+  'propiedad', 'proveedor_propietario', 'sede_id', 'fecha_ingreso',
+  'fecha_vencimiento_contrato', 'numero_contrato', 'codigo_interno', 'ficha_tecnica', 'observaciones',
+];
+
+export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
+  open: boolean; onClose: () => void; onSaved: () => void; equipo?: Equipo;
+}) {
   const { t } = useTranslation();
   const { perfil } = useApp();
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
   const { data: marcas = [] } = useQuery({ queryKey: ['marcas'], queryFn: listMarcas });
   const { data: proveedores = [] } = useQuery({ queryKey: ['proveedores'], queryFn: listProveedores });
   const sedeFija = perfil?.rol === 'JEFE_SEDE' || perfil?.rol === 'TECNICO';
-  const base: Partial<Equipo> = { tipo: 'PORTATIL', estado_fisico: 'BUENO', propiedad: 'EMPRESA', sede_id: sedeFija ? perfil?.sede_id : null };
-  const [f, setF] = useState<Partial<Equipo>>(base);
+  const editando = !!equipo;
+  const [f, setF] = useState<Partial<Equipo>>({});
   const [busy, setBusy] = useState(false);
   const set = (k: keyof Equipo, v: any) => setF((s) => ({ ...s, [k]: v }));
+
+  // Reinicia el formulario cada vez que se abre: con los datos del equipo (editar) o vacío (crear).
+  useEffect(() => {
+    if (!open) return;
+    setF(equipo
+      ? { ...equipo }
+      : { tipo: 'PORTATIL', estado_fisico: 'BUENO', propiedad: 'EMPRESA', sede_id: sedeFija ? perfil?.sede_id : null });
+  }, [open, equipo]);
 
   const save = async () => {
     if (!f.marca || !f.linea_modelo || !f.serial) { toast.error(t('form.requiredFields')); return; }
     setBusy(true);
     try {
-      await createEquipo(f);
-      toast.success(t('form.saved'));
-      setF(base);
+      if (editando) {
+        const patch: Partial<Equipo> = {};
+        for (const k of EDITABLES) if (f[k] !== undefined) (patch as any)[k] = f[k];
+        await updateEquipo(equipo!.id, patch);
+        toast.success(t('form.updated'));
+      } else {
+        await createEquipo(f);
+        toast.success(t('form.saved'));
+      }
       onSaved(); onClose();
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
     finally { setBusy(false); }
   };
 
-  const Field = ({ label, k, type = 'text', req }: { label: string; k: keyof Equipo; type?: string; req?: boolean }) => (
-    <div>
-      <label className="label">{label}{req && <span className="text-danger"> *</span>}</label>
-      <input type={type} className="input" value={(f[k] as string) ?? ''} onChange={(e) => set(k, type === 'number' ? Number(e.target.value) : e.target.value)} />
-    </div>
-  );
-
   return (
-    <Modal open={open} onClose={onClose} title={t('form.newTitle')} subtitle={t('form.newSub')} size="lg">
+    <Modal open={open} onClose={onClose} title={editando ? t('form.editTitle') : t('form.newTitle')} subtitle={editando ? t('form.editSub') : t('form.newSub')} size="lg">
       <div className="grid sm:grid-cols-2 gap-4">
         <div>
           <label className="label">{t('equipo.marca')}<span className="text-danger"> *</span></label>
           <input className="input" list="dl-marcas" value={f.marca ?? ''} onChange={(e) => set('marca', e.target.value)} placeholder={t('form.pickOrType')} />
           <datalist id="dl-marcas">{marcas.map((m) => <option key={m.id} value={m.nombre} />)}</datalist>
         </div>
-        <Field label={t('equipo.modelo')} k="linea_modelo" req />
-        <div className="sm:col-span-2"><Field label={t('equipo.descripcion')} k="descripcion_completa" /></div>
-        <Field label={t('equipo.serial')} k="serial" req />
+        <Field label={t('equipo.modelo')} k="linea_modelo" f={f} set={set} req />
+        <div className="sm:col-span-2"><Field label={t('equipo.descripcion')} k="descripcion_completa" f={f} set={set} /></div>
+        <Field label={t('equipo.serial')} k="serial" f={f} set={set} req />
         <div>
           <label className="label">{t('equipo.tipo')}</label>
           <Select
@@ -93,16 +128,16 @@ export function NuevoEquipoModal({ open, onClose, onSaved }: { open: boolean; on
           <input className="input" list="dl-proveedores" value={f.proveedor_propietario ?? ''} onChange={(e) => set('proveedor_propietario', e.target.value)} placeholder={t('form.pickOrType')} />
           <datalist id="dl-proveedores">{proveedores.map((p) => <option key={p.id} value={p.nombre} />)}</datalist>
         </div>
-        <Field label={t('equipo.fechaIngreso')} k="fecha_ingreso" type="date" />
+        <Field label={t('equipo.fechaIngreso')} k="fecha_ingreso" type="date" f={f} set={set} />
         {f.propiedad === 'RENTADO' && (
           <>
-            <Field label={t('equipo.fechaVencimiento')} k="fecha_vencimiento_contrato" type="date" />
-            <Field label={t('equipo.numeroContrato')} k="numero_contrato" />
-            <Field label={t('equipo.codigoInterno')} k="codigo_interno" type="number" />
+            <Field label={t('equipo.fechaVencimiento')} k="fecha_vencimiento_contrato" type="date" f={f} set={set} />
+            <Field label={t('equipo.numeroContrato')} k="numero_contrato" f={f} set={set} />
+            <Field label={t('equipo.codigoInterno')} k="codigo_interno" type="number" f={f} set={set} />
           </>
         )}
-        <div className="sm:col-span-2"><Field label={t('equipo.fichaTecnica')} k="ficha_tecnica" /></div>
-        <div className="sm:col-span-2"><Field label={t('equipo.observaciones')} k="observaciones" /></div>
+        <div className="sm:col-span-2"><Field label={t('equipo.fichaTecnica')} k="ficha_tecnica" f={f} set={set} /></div>
+        <div className="sm:col-span-2"><Field label={t('equipo.observaciones')} k="observaciones" f={f} set={set} /></div>
       </div>
 
       <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-ink-100 dark:border-white/10">

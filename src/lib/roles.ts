@@ -11,7 +11,7 @@ export const RUTA_ROLES: Record<string, RolUsuario[]> = {
   '/reporte-proveedor': ['ADMIN', 'LIDER', 'JEFE_SEDE'],
   '/sedes': ['ADMIN'],
   '/integraciones': ['ADMIN'],
-  '/usuarios': ['ADMIN'],
+  '/usuarios': ['ADMIN', 'LIDER', 'JEFE_SEDE'],
 };
 
 export function puedeVerRuta(rol: RolUsuario | undefined, ruta: string): boolean {

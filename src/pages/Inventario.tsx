@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Boxes, Search, Plus, Download, QrCode, AlertTriangle, SlidersHorizontal } from 'lucide-react';
+import { Boxes, Search, Plus, Download, QrCode, AlertTriangle, SlidersHorizontal, Pencil } from 'lucide-react';
 import { listEquipos } from '@/lib/api';
 import { exportEquiposExcel } from '@/lib/excel';
 import { descargarQr } from '@/lib/qr';
@@ -18,15 +18,17 @@ import type { Equipo } from '@/types';
 
 export function Inventario() {
   const { t } = useTranslation();
-  const { canEdit, perfil } = useApp();
+  const { canEdit, can, perfil } = useApp();
   const { data: equiposRaw = [], refetch } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
   const equipos = useMemo(() => scopeEquipos(equiposRaw, perfil), [equiposRaw, perfil]);
+  const puedeEditar = can('ADMIN', 'LIDER', 'JEFE_SEDE');
 
   const [q, setQ] = useState('');
   const [fEstado, setFEstado] = useState('');
   const [fTipo, setFTipo] = useState('');
   const [fProp, setFProp] = useState('');
   const [showNew, setShowNew] = useState(false);
+  const [editing, setEditing] = useState<Equipo | null>(null);
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -108,18 +110,19 @@ export function Inventario() {
             </tr>
           </thead>
           <tbody>
-            {filtered.map((e, i) => <Row key={e.id} e={e} i={i} />)}
+            {filtered.map((e, i) => <Row key={e.id} e={e} i={i} onEdit={puedeEditar ? setEditing : undefined} />)}
           </tbody>
         </table>
         {filtered.length === 0 && <div className="py-12 text-center text-ink-400">{t('common.empty')}</div>}
       </div>
 
       <div className="md:hidden space-y-3">
-        {filtered.map((e) => <MobileCard key={e.id} e={e} />)}
+        {filtered.map((e) => <MobileCard key={e.id} e={e} onEdit={puedeEditar ? setEditing : undefined} />)}
         {filtered.length === 0 && <div className="py-12 text-center text-ink-400">{t('common.empty')}</div>}
       </div>
 
       <NuevoEquipoModal open={showNew} onClose={() => setShowNew(false)} onSaved={() => refetch()} />
+      <NuevoEquipoModal open={!!editing} onClose={() => setEditing(null)} onSaved={() => refetch()} equipo={editing ?? undefined} />
     </div>
   );
 }
@@ -130,7 +133,7 @@ function VenceAlert({ e }: { e: Equipo }) {
   return <span className="badge bg-warning/15 text-amber-600 dark:text-warning ml-2"><AlertTriangle size={11} /> {d}d</span>;
 }
 
-function Row({ e, i }: { e: Equipo; i: number }) {
+function Row({ e, i, onEdit }: { e: Equipo; i: number; onEdit?: (e: Equipo) => void }) {
   const { t } = useTranslation();
   return (
     <motion.tr initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.02, 0.3) }}
@@ -146,14 +149,15 @@ function Row({ e, i }: { e: Equipo; i: number }) {
       <td className="px-4 py-3"><EstadoBadge estado={e.estado_asignacion} label={t(`estadoAsig.${e.estado_asignacion}`)} /></td>
       <td className="px-4 py-3 text-ink-500">{e.proveedor_propietario ?? '—'}</td>
       <td className="px-4 py-3 text-ink-500">{e.proyecto_asignado ?? '—'}</td>
-      <td className="px-4 py-3 text-right">
+      <td className="px-4 py-3 text-right whitespace-nowrap">
+        {onEdit && <button onClick={() => onEdit(e)} className="btn-ghost !p-2" title={t('common.edit')}><Pencil size={16} /></button>}
         <button onClick={() => descargarQr(e)} className="btn-ghost !p-2" title="QR"><QrCode size={16} /></button>
       </td>
     </motion.tr>
   );
 }
 
-function MobileCard({ e }: { e: Equipo }) {
+function MobileCard({ e, onEdit }: { e: Equipo; onEdit?: (e: Equipo) => void }) {
   const { t } = useTranslation();
   return (
     <Link to={`/equipo/${e.id}`} className="card p-4 flex items-center gap-3 block">
@@ -165,6 +169,13 @@ function MobileCard({ e }: { e: Equipo }) {
           <Badge>{t(`tipo.${e.tipo}`)}</Badge>
         </div>
       </div>
+      {onEdit && (
+        <button
+          onClick={(ev) => { ev.preventDefault(); ev.stopPropagation(); onEdit(e); }}
+          className="btn-ghost !p-2 shrink-0" title={t('common.edit')}>
+          <Pencil size={16} />
+        </button>
+      )}
     </Link>
   );
 }

@@ -241,7 +241,10 @@
   "form": {
     "newTitle": "Registrar nuevo equipo",
     "newSub": "El estado inicial será DISPONIBLE por defecto",
+    "editTitle": "Editar equipo",
+    "editSub": "Modifica los datos del equipo",
     "saved": "Equipo registrado correctamente",
+    "updated": "Equipo actualizado correctamente",
     "requiredFields": "Complete los campos requeridos",
     "pickOrType": "Elige uno o escribe uno nuevo"
   },

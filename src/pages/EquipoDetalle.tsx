@@ -5,22 +5,27 @@ import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Printer, Download, QrCode, User, MapPin, Calendar, FileText,
-  Cpu, ShieldCheck, Building2, History,
+  Cpu, ShieldCheck, Building2, History, Pencil,
 } from 'lucide-react';
 import { getEquipo, trazabilidad, getColaborador } from '@/lib/api';
 import { equipoQrDataUrl, imprimirEtiquetaQr, descargarQr } from '@/lib/qr';
 import { fmtDate, diasRestantes } from '@/lib/format';
 import { EstadoBadge, FisicoBadge, Badge } from '@/components/ui/Badge';
+import { NuevoEquipoModal } from '@/components/NuevoEquipoModal';
+import { useApp } from '@/store/useApp';
 import type { Colaborador } from '@/types';
 
 export function EquipoDetalle() {
   const { id = '' } = useParams();
   const { t, i18n } = useTranslation();
+  const { can } = useApp();
   const navigate = useNavigate();
   const [qr, setQr] = useState('');
   const [colab, setColab] = useState<Colaborador | null>(null);
+  const [editar, setEditar] = useState(false);
+  const puedeEditar = can('ADMIN', 'LIDER', 'JEFE_SEDE');
 
-  const { data: equipo, isLoading } = useQuery({ queryKey: ['equipo', id], queryFn: () => getEquipo(id) });
+  const { data: equipo, isLoading, refetch } = useQuery({ queryKey: ['equipo', id], queryFn: () => getEquipo(id) });
   const { data: movs = [] } = useQuery({ queryKey: ['traz', id], queryFn: () => trazabilidad(id) });
 
   useEffect(() => { if (equipo) equipoQrDataUrl(equipo.codigo_qr, 300).then(setQr); }, [equipo]);
@@ -69,6 +74,11 @@ export function EquipoDetalle() {
                 <p className="text-ink-400 mt-1">{equipo.descripcion_completa}</p>
                 <div className="text-xs text-ink-400 font-mono mt-2">{equipo.codigo_qr}</div>
               </div>
+              {puedeEditar && (
+                <button onClick={() => setEditar(true)} className="btn-secondary shrink-0">
+                  <Pencil size={16} /> {t('common.edit')}
+                </button>
+              )}
             </div>
 
             <div className="grid sm:grid-cols-2 gap-x-8 gap-y-3 mt-6">
@@ -144,6 +154,10 @@ export function EquipoDetalle() {
           </motion.div>
         </div>
       </div>
+
+      {puedeEditar && (
+        <NuevoEquipoModal open={editar} onClose={() => setEditar(false)} onSaved={() => refetch()} equipo={equipo} />
+      )}
     </div>
   );
 }
