@@ -81,7 +81,7 @@
   },
   "sedes": {
     "title": "Países y sedes",
-    "subtitle": "Define la estructura geográfica. Los jefes y técnicos se limitan a su sede.",
+    "subtitle": "Define la estructura geográfica. Los líderes de sede y técnicos se limitan a su sede.",
     "countries": "Países",
     "countryName": "Nombre del país",
     "code": "Cód.",
@@ -222,8 +222,8 @@
   },
   "rol": {
     "ADMIN": "Administrador",
-    "LIDER": "Líder",
-    "JEFE_SEDE": "Jefe de sede",
+    "LIDER": "Jefe",
+    "JEFE_SEDE": "Líder de sede",
     "TECNICO": "Técnico"
   },
   "rolDesc": {

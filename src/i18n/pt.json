@@ -81,7 +81,7 @@
   },
   "sedes": {
     "title": "Países e unidades",
-    "subtitle": "Defina a estrutura geográfica. Chefes e técnicos ficam limitados à sua unidade.",
+    "subtitle": "Defina a estrutura geográfica. Líderes de unidade e técnicos ficam limitados à sua unidade.",
     "countries": "Países",
     "countryName": "Nome do país",
     "code": "Cód.",
@@ -222,8 +222,8 @@
   },
   "rol": {
     "ADMIN": "Administrador",
-    "LIDER": "Líder",
-    "JEFE_SEDE": "Chefe de unidade",
+    "LIDER": "Chefe",
+    "JEFE_SEDE": "Líder de unidade",
     "TECNICO": "Técnico"
   },
   "rolDesc": {
