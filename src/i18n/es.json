@@ -258,6 +258,8 @@
     "found": "Colaborador encontrado",
     "notFound": "No encontrado. Complete los datos para crearlo.",
     "notRegistered": "No existe un colaborador con esa cédula. Regístrelo primero en la sección Colaboradores.",
+    "otraSede": "Este colaborador pertenece a {{sede}} y usted no opera en esa sede. Pida a un administrador o jefe que le asigne la sede, o que otro usuario haga la entrega.",
+    "sinSede": "Este colaborador no tiene sede asignada, así que no es posible verificar si pertenece a la suya. Pida a un administrador que le asigne la sede.",
     "selectEquipment": "Seleccione el equipo disponible",
     "signTitle": "Firma del colaborador",
     "signSub": "El colaborador firma para aceptar la entrega",
@@ -322,6 +324,9 @@
     "sede": "Sede",
     "selectSede": "Elegir sede…",
     "sedeRequired": "Selecciona una sede para este rol.",
+    "sedes": "Sedes del usuario",
+    "sedesHint": "Sedes en las que {{nombre}} puede asignar equipos. Puede tener varias.",
+    "todasLasSedes": "Todas las sedes",
     "noSedes": "Aún no hay sedes. Créalas en la sección Sedes.",
     "newUser": "Nuevo usuario",
     "newUserHint": "Ingresa nombre y correo. El sistema genera una contraseña temporal para que el usuario ingrese y cree la suya.",
@@ -334,7 +339,11 @@
   "collaborators": {
     "title": "Colaboradores",
     "subtitle": "Personas que reciben y entregan equipos",
-    "new": "Nuevo colaborador"
+    "new": "Nuevo colaborador",
+    "edit": "Editar colaborador",
+    "editHint": "La cédula identifica al colaborador y no se puede cambiar",
+    "duplicate": "Ya existe un colaborador con la cédula {{cedula}}",
+    "duplicateEmail": "Ya existe un colaborador con el correo {{correo}}"
   },
   "acta": {
     "title": "Actas digitales",

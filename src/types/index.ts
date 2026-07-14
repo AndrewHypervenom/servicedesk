@@ -68,7 +68,8 @@ export interface Colaborador {
   telefono?: string | null;
   proyecto?: string | null;
   lider?: string | null;
-  sede?: string | null;
+  sede?: string | null;       // texto libre heredado; se conserva por historia
+  sede_id?: string | null;    // la sede real (FK a sedes)
   activo: boolean;
   creado_en: string;
 }

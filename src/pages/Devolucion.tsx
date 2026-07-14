@@ -31,8 +31,10 @@ export function Devolucion() {
 
   const seleccionados = Object.values(sel);
 
+  // Solo se devuelve lo que está en manos de alguien: un equipo DISPONIBLE ya
+  // está en bodega y no hay nada que devolver.
   const candidatos = equipos.filter((e) =>
-    ['ASIGNADO', 'EN_MANTENIMIENTO', 'DISPONIBLE'].includes(e.estado_asignacion) &&
+    ['ASIGNADO', 'EN_MANTENIMIENTO'].includes(e.estado_asignacion) &&
     (!q || [e.serial, e.marca, e.linea_modelo, e.codigo_qr, e.tipo].some((v) => v?.toLowerCase().includes(q.toLowerCase()))));
 
   const toggleEquipo = (e: Equipo) => {

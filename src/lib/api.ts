@@ -88,8 +88,36 @@ export async function getColaborador(cedula: string): Promise<Colaborador | null
   const { data } = await supabase.from('colaboradores').select('*').eq('cedula', cedula.trim()).maybeSingle();
   return (data as Colaborador) ?? null;
 }
-export async function upsertColaborador(c: Colaborador): Promise<void> {
-  const { error } = await supabase.from('colaboradores').upsert(c);
+/**
+ * Ante un choque de unicidad (23505), dice qué campo lo causó. La cédula es la PK
+ * y el correo tiene el índice `colaboradores_correo_unico`.
+ */
+export function campoDuplicado(e: unknown): 'correo' | 'cedula' | null {
+  const err = e as { code?: string; message?: string };
+  if (err?.code !== '23505') return null;
+  return err.message?.includes('correo') ? 'correo' : 'cedula';
+}
+
+/** '' -> null, para que los campos vacíos no cuenten como valor repetido. */
+const vacioANull = (c: Partial<Colaborador>): Partial<Colaborador> => {
+  const limpio: Record<string, unknown> = { ...c };
+  for (const [k, v] of Object.entries(limpio)) {
+    if (typeof v === 'string' && v.trim() === '') limpio[k] = null;
+    else if (typeof v === 'string') limpio[k] = v.trim();
+  }
+  return limpio as Partial<Colaborador>;
+};
+
+/** Alta de colaborador. Falla si la cédula o el correo ya existen: nunca sobrescribe. */
+export async function crearColaborador(c: Colaborador): Promise<void> {
+  const { error } = await supabase.from('colaboradores').insert(vacioANull(c));
+  if (error) throw error;
+}
+
+/** Edita un colaborador. La cédula es la llave y no se toca: identifica la fila. */
+export async function actualizarColaborador(cedula: string, c: Partial<Colaborador>): Promise<void> {
+  const { cedula: _omit, creado_en: _omit2, ...campos } = c;
+  const { error } = await supabase.from('colaboradores').update(vacioANull(campos)).eq('cedula', cedula);
   if (error) throw error;
 }
 
@@ -154,6 +182,26 @@ export async function listIntegraciones(): Promise<Integracion[]> {
 }
 export async function createIntegracion(i: Partial<Integracion>): Promise<void> {
   const { error } = await supabase.from('integraciones').insert(i);
+  if (error) throw error;
+}
+
+/** Sedes de cada perfil (perfil_id -> sede_id[]), para la pantalla de Usuarios. */
+export async function listSedesPorPerfil(): Promise<Record<string, string[]>> {
+  const { data } = await supabase.from('perfil_sedes').select('perfil_id, sede_id');
+  const mapa: Record<string, string[]> = {};
+  for (const r of (data ?? []) as { perfil_id: string; sede_id: string }[]) {
+    (mapa[r.perfil_id] ??= []).push(r.sede_id);
+  }
+  return mapa;
+}
+
+/** Reemplaza el conjunto de sedes de un perfil. Solo ADMIN y Jefe (RLS lo exige). */
+export async function setSedesDePerfil(perfilId: string, sedeIds: string[]): Promise<void> {
+  const { error: delErr } = await supabase.from('perfil_sedes').delete().eq('perfil_id', perfilId);
+  if (delErr) throw delErr;
+  if (!sedeIds.length) return;
+  const { error } = await supabase.from('perfil_sedes')
+    .insert(sedeIds.map((sede_id) => ({ perfil_id: perfilId, sede_id })));
   if (error) throw error;
 }
 

@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserPlus, Search, Check, ArrowRight, ArrowLeft, FileSignature, Mail, Eye, Plus, X } from 'lucide-react';
-import { listEquipos, getColaborador, asignarEquipo, createActa, subirPdfActa } from '@/lib/api';
+import { listEquipos, getColaborador, asignarEquipo, createActa, subirPdfActa, listSedes } from '@/lib/api';
 import { generarActaPdf, abrirBlob, blobToBase64, type ActaItem } from '@/lib/pdf';
 import { supabase } from '@/lib/supabase';
 import { ACTA_ASIGNACION } from '@/lib/actaTemplates';
@@ -16,8 +16,9 @@ import type { Colaborador, Equipo } from '@/types';
 
 export function Asignar() {
   const { t } = useTranslation();
-  const { perfil } = useApp();
+  const { perfil, puedeAsignarASede } = useApp();
   const { data: equipos = [], refetch } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
+  const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
   const disponibles = equipos.filter((e) => e.estado_asignacion === 'DISPONIBLE');
 
   const [step, setStep] = useState(0);
@@ -33,6 +34,11 @@ export function Asignar() {
   const sigRef = useRef<SignatureHandle>(null);
 
   const seleccionados = Object.values(sel);
+
+  // Un Técnico o Líder de sede solo asigna a colaboradores de sus sedes. Puede
+  // verlos, pero no continuar. La base lo vuelve a validar (asignacion_guard).
+  const permitido = !colab || puedeAsignarASede(colab.sede_id);
+  const sedeColab = sedes.find((s) => s.id === colab?.sede_id)?.nombre ?? colab?.sede;
 
   const buscar = async () => {
     if (!cedula.trim()) return;
@@ -166,8 +172,17 @@ export function Asignar() {
                   {dato(t('auth.email'), colab.correo)}
                   {dato(t('equipo.proyectoAsignado'), colab.proyecto)}
                   {dato('Líder inmediato', colab.lider)}
-                  {dato('Sede', colab.sede)}
+                  {dato('Sede', sedeColab)}
                 </div>
+              </motion.div>
+            )}
+
+            {buscado && colab && !permitido && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                className="mt-3 p-4 rounded-2xl bg-danger/8 border border-danger/20 text-sm text-red-600 dark:text-danger">
+                {colab.sede_id
+                  ? t('assign.otraSede', { sede: sedeColab })
+                  : t('assign.sinSede')}
               </motion.div>
             )}
 
@@ -178,7 +193,7 @@ export function Asignar() {
             )}
 
             <div className="flex justify-end mt-6">
-              <button className="btn-primary" disabled={!colab} onClick={() => setStep(1)}>
+              <button className="btn-primary" disabled={!colab || !permitido} onClick={() => setStep(1)}>
                 {t('common.next')} <ArrowRight size={16} />
               </button>
             </div>

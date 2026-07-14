@@ -8,6 +8,7 @@ type Theme = 'light' | 'dark' | 'system';
 
 interface AppState {
   perfil: Perfil | null;
+  misSedes: string[];
   loading: boolean;
   theme: Theme;
   idioma: string;
@@ -20,6 +21,10 @@ interface AppState {
   setIdioma: (l: string) => void;
   can: (...roles: RolUsuario[]) => boolean;
   canEdit: () => boolean;
+  /** ADMIN y Jefe (LIDER) no están atados a una ciudad. */
+  operaTodasLasSedes: () => boolean;
+  /** ¿Puede asignarle equipos a un colaborador de esta sede? */
+  puedeAsignarASede: (sedeId?: string | null) => boolean;
 }
 
 function applyTheme(theme: Theme) {
@@ -28,8 +33,20 @@ function applyTheme(theme: Theme) {
   root.classList.toggle('dark', dark);
 }
 
+/** Perfil + las sedes en las que puede operar (la principal y las adicionales). */
+async function cargarPerfil(userId: string) {
+  const [{ data: perfil }, { data: extra }] = await Promise.all([
+    supabase.from('perfiles').select('*').eq('id', userId).single(),
+    supabase.from('perfil_sedes').select('sede_id').eq('perfil_id', userId),
+  ]);
+  const sedes = new Set((extra ?? []).map((s: { sede_id: string }) => s.sede_id));
+  if (perfil?.sede_id) sedes.add(perfil.sede_id);
+  return { perfil: perfil as Perfil, misSedes: [...sedes] };
+}
+
 export const useApp = create<AppState>((set, get) => ({
   perfil: null,
+  misSedes: [],
   loading: true,
   theme: (localStorage.getItem('theme') as Theme) || 'system',
   idioma: localStorage.getItem('idioma') || 'es',
@@ -37,17 +54,10 @@ export const useApp = create<AppState>((set, get) => ({
   init: async () => {
     applyTheme(get().theme);
     const { data } = await supabase.auth.getSession();
-    if (data.session) {
-      const { data: perfil } = await supabase.from('perfiles').select('*').eq('id', data.session.user.id).single();
-      set({ perfil: perfil as Perfil });
-    }
+    if (data.session) set(await cargarPerfil(data.session.user.id));
     supabase.auth.onAuthStateChange(async (_e, session) => {
-      if (session) {
-        const { data: perfil } = await supabase.from('perfiles').select('*').eq('id', session.user.id).single();
-        set({ perfil: perfil as Perfil });
-      } else {
-        set({ perfil: null });
-      }
+      if (session) set(await cargarPerfil(session.user.id));
+      else set({ perfil: null, misSedes: [] });
     });
     set({ loading: false });
   },
@@ -71,7 +81,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
   signOut: async () => {
     await supabase.auth.signOut();
-    set({ perfil: null });
+    set({ perfil: null, misSedes: [] });
   },
 
   setTheme: (t) => { localStorage.setItem('theme', t); applyTheme(t); set({ theme: t }); },
@@ -79,4 +89,10 @@ export const useApp = create<AppState>((set, get) => ({
 
   can: (...roles) => { const r = get().perfil?.rol; return !!r && roles.includes(r); },
   canEdit: () => { const r = get().perfil?.rol; return !!r && ROLES_EDICION.includes(r); },
+
+  operaTodasLasSedes: () => { const r = get().perfil?.rol; return r === 'ADMIN' || r === 'LIDER'; },
+  puedeAsignarASede: (sedeId) => {
+    if (get().operaTodasLasSedes()) return true;
+    return !!sedeId && get().misSedes.includes(sedeId);
+  },
 }));

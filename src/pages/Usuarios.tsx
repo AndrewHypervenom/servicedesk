@@ -1,13 +1,14 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ShieldCheck, UserPlus, Copy, Check } from 'lucide-react';
-import { listPerfiles, updateRol, updateSedeUsuario, crearUsuario, listSedes } from '@/lib/api';
+import { ShieldCheck, UserPlus, Copy, Check, Pencil } from 'lucide-react';
+import { listPerfiles, updateRol, updateSedeUsuario, crearUsuario, listSedes, listSedesPorPerfil, setSedesDePerfil } from '@/lib/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select, type SelectOption } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toast';
 import { initials } from '@/lib/format';
+import { useApp } from '@/store/useApp';
 import type { Perfil, RolUsuario, Sede } from '@/types';
 
 const ROLES: RolUsuario[] = ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'];
@@ -26,7 +27,12 @@ export function Usuarios() {
   const { t } = useTranslation();
   const { data: perfiles = [], refetch } = useQuery({ queryKey: ['perfiles'], queryFn: listPerfiles });
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
+  const { data: sedesPorPerfil = {}, refetch: refetchSedes } = useQuery({
+    queryKey: ['perfil-sedes'], queryFn: listSedesPorPerfil,
+  });
   const [nuevo, setNuevo] = useState(false);
+
+  const recargar = () => { refetch(); refetchSedes(); };
 
   const change = async (id: string, rol: RolUsuario) => {
     await updateRol(id, rol); toast.success(t('common.success')); refetch();
@@ -75,8 +81,8 @@ export function Usuarios() {
                 </td>
                 <td className="px-4 py-3">
                   {rolPorSede(p.rol)
-                    ? <SedeUsuario perfil={p} sedes={sedes} onSaved={refetch} />
-                    : <span className="text-ink-300">—</span>}
+                    ? <SedesUsuario perfil={p} sedes={sedes} asignadas={sedesPorPerfil[p.id] ?? []} onSaved={recargar} />
+                    : <span className="text-ink-300">{t('users.todasLasSedes')}</span>}
                 </td>
               </tr>
             ))}
@@ -87,20 +93,74 @@ export function Usuarios() {
   );
 }
 
-function SedeUsuario({ perfil, sedes, onSaved }: { perfil: Perfil; sedes: Sede[]; onSaved: () => void }) {
+/**
+ * Sedes de un usuario. Un Técnico o Líder de sede puede operar en varias, y solo
+ * el Administrador y el Jefe pueden cambiárselas (la RLS de perfil_sedes lo exige).
+ */
+function SedesUsuario({ perfil, sedes, asignadas, onSaved }:
+  { perfil: Perfil; sedes: Sede[]; asignadas: string[]; onSaved: () => void }) {
   const { t } = useTranslation();
-  const change = async (v: string) => {
-    try { await updateSedeUsuario(perfil.id, v || null); toast.success(t('common.success')); onSaved(); }
-    catch { toast.error(t('common.error')); }
+  const { operaTodasLasSedes } = useApp();
+  const [open, setOpen] = useState(false);
+  const [sel, setSel] = useState<string[]>(asignadas);
+  const [busy, setBusy] = useState(false);
+  const puedeEditar = operaTodasLasSedes();
+
+  const abrir = () => { setSel(asignadas); setOpen(true); };
+  const toggle = (id: string) =>
+    setSel((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
+
+  const guardar = async () => {
+    setBusy(true);
+    try {
+      await setSedesDePerfil(perfil.id, sel);
+      // `perfiles.sede_id` sigue siendo la sede principal: se mantiene alineada
+      // con la primera seleccionada para no dejar el dato viejo inconsistente.
+      if ((perfil.sede_id ?? null) !== (sel[0] ?? null)) await updateSedeUsuario(perfil.id, sel[0] ?? null);
+      toast.success(t('common.success'));
+      setOpen(false); onSaved();
+    } catch { toast.error(t('common.error')); }
+    finally { setBusy(false); }
   };
+
+  const nombres = asignadas
+    .map((id) => sedes.find((s) => s.id === id)?.nombre)
+    .filter(Boolean) as string[];
+
   return (
-    <Select
-      value={perfil.sede_id ?? ''}
-      onChange={change}
-      className="!w-auto !py-1.5 text-xs"
-      placeholder={t('users.selectSede')}
-      options={[{ value: '', label: '—' }, ...sedes.map(sedeOption)]}
-    />
+    <>
+      <button onClick={abrir} disabled={!puedeEditar}
+        className="flex flex-wrap items-center gap-1 text-left disabled:cursor-default">
+        {nombres.length === 0 && <span className="text-ink-300">{t('users.selectSede')}</span>}
+        {nombres.map((n) => (
+          <span key={n} className="badge bg-brand-500/15 text-brand-600 dark:text-brand-300">{n}</span>
+        ))}
+        {puedeEditar && <Pencil size={13} className="text-ink-400 ml-1" />}
+      </button>
+
+      <Modal open={open} onClose={() => !busy && setOpen(false)}
+        title={t('users.sedes')} subtitle={t('users.sedesHint', { nombre: perfil.nombre })}>
+        <div className="space-y-1.5 max-h-72 overflow-y-auto">
+          {sedes.map((s) => {
+            const on = sel.includes(s.id);
+            return (
+              <button key={s.id} onClick={() => toggle(s.id)}
+                className={`w-full text-left p-3 rounded-xl border transition-all flex items-center gap-3 ${
+                  on ? 'border-brand-500 bg-brand-500/5 ring-1 ring-brand-500' : 'border-ink-100 dark:border-white/10 hover:bg-ink-50 dark:hover:bg-white/5'}`}>
+                <div className={`w-5 h-5 rounded-md grid place-items-center shrink-0 border ${on ? 'bg-brand-500 border-brand-500 text-white' : 'border-ink-300 dark:border-white/20'}`}>
+                  {on && <Check size={13} />}
+                </div>
+                <span className="text-sm">{sedeOption(s).label}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex justify-end gap-2 mt-6">
+          <button className="btn-secondary" disabled={busy} onClick={() => setOpen(false)}>{t('common.cancel')}</button>
+          <button className="btn-primary" disabled={busy} onClick={guardar}>{t('common.save')}</button>
+        </div>
+      </Modal>
+    </>
   );
 }
 

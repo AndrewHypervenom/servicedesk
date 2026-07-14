@@ -258,6 +258,8 @@
     "found": "Colaborador encontrado",
     "notFound": "Não encontrado. Preencha os dados para criá-lo.",
     "notRegistered": "Não existe um colaborador com esse documento. Cadastre-o primeiro na seção Colaboradores.",
+    "otraSede": "Este colaborador pertence a {{sede}} e você não opera nessa sede. Peça a um administrador ou chefe que lhe atribua a sede, ou que outro usuário faça a entrega.",
+    "sinSede": "Este colaborador não tem sede atribuída, portanto não é possível verificar se pertence à sua. Peça a um administrador que atribua a sede.",
     "selectEquipment": "Selecione o equipamento disponível",
     "signTitle": "Assinatura do colaborador",
     "signSub": "O colaborador assina para aceitar a entrega",
@@ -322,6 +324,9 @@
     "sede": "Unidade",
     "selectSede": "Escolher unidade…",
     "sedeRequired": "Selecione uma unidade para este perfil.",
+    "sedes": "Unidades do usuário",
+    "sedesHint": "Unidades em que {{nombre}} pode atribuir equipamentos. Pode ter várias.",
+    "todasLasSedes": "Todas as unidades",
     "noSedes": "Ainda não há unidades. Crie-as na seção Unidades.",
     "newUser": "Novo usuário",
     "newUserHint": "Informe nome e e-mail. O sistema gera uma senha temporária para o usuário entrar e criar a sua.",
@@ -334,7 +339,11 @@
   "collaborators": {
     "title": "Colaboradores",
     "subtitle": "Pessoas que recebem e entregam equipamentos",
-    "new": "Novo colaborador"
+    "new": "Novo colaborador",
+    "edit": "Editar colaborador",
+    "editHint": "O CPF identifica o colaborador e não pode ser alterado",
+    "duplicate": "Já existe um colaborador com o CPF {{cedula}}",
+    "duplicateEmail": "Já existe um colaborador com o e-mail {{correo}}"
   },
   "acta": {
     "title": "Termos digitais",
