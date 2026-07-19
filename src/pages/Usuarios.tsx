@@ -6,6 +6,9 @@ import { listPerfiles, updateRol, updateSedeUsuario, crearUsuario, listSedes, li
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select, type SelectOption } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { SkeletonRows } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { initials } from '@/lib/format';
 import { useApp } from '@/store/useApp';
@@ -25,7 +28,7 @@ const sedeOption = (s: Sede): SelectOption =>
 
 export function Usuarios() {
   const { t } = useTranslation();
-  const { data: perfiles = [], refetch } = useQuery({ queryKey: ['perfiles'], queryFn: listPerfiles });
+  const { data: perfiles = [], refetch, isLoading } = useQuery({ queryKey: ['perfiles'], queryFn: listPerfiles });
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
   const { data: sedesPorPerfil = {}, refetch: refetchSedes } = useQuery({
     queryKey: ['perfil-sedes'], queryFn: listSedesPorPerfil,
@@ -41,7 +44,7 @@ export function Usuarios() {
   return (
     <div>
       <PageHeader title={t('users.title')} subtitle={t('users.subtitle')} icon={ShieldCheck}
-        action={<button onClick={() => setNuevo(true)} className="btn-primary"><UserPlus size={16} /> {t('users.newUser')}</button>} />
+        action={<Button variant="primary" icon={UserPlus} onClick={() => setNuevo(true)}>{t('users.newUser')}</Button>} />
 
       <NuevoUsuarioModal open={nuevo} onClose={() => setNuevo(false)} onSaved={refetch} sedes={sedes} />
 
@@ -62,7 +65,8 @@ export function Usuarios() {
             </tr>
           </thead>
           <tbody>
-            {perfiles.map((p) => (
+            {isLoading && <SkeletonRows rows={5} cols={4} />}
+            {!isLoading && perfiles.map((p) => (
               <tr key={p.id} className="border-b border-ink-50 dark:border-white/5">
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-2.5">
@@ -88,6 +92,14 @@ export function Usuarios() {
             ))}
           </tbody>
         </table>
+        {!isLoading && perfiles.length === 0 && (
+          <EmptyState
+            icon={ShieldCheck}
+            title={t('users.emptyTitle')}
+            description={t('users.emptyDesc')}
+            action={<Button variant="primary" icon={UserPlus} onClick={() => setNuevo(true)}>{t('users.newUser')}</Button>}
+          />
+        )}
       </div>
     </div>
   );
@@ -156,8 +168,10 @@ function SedesUsuario({ perfil, sedes, asignadas, onSaved }:
           })}
         </div>
         <div className="flex justify-end gap-2 mt-6">
-          <button className="btn-secondary" disabled={busy} onClick={() => setOpen(false)}>{t('common.cancel')}</button>
-          <button className="btn-primary" disabled={busy} onClick={guardar}>{t('common.save')}</button>
+          <Button disabled={busy} onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
+          <Button variant="primary" loading={busy} onClick={guardar}>
+            {busy ? t('common.saving') : t('common.save')}
+          </Button>
         </div>
       </Modal>
     </>
@@ -233,8 +247,10 @@ function NuevoUsuarioModal({ open, onClose, onSaved, sedes }: { open: boolean; o
             )}
           </div>
           <div className="flex justify-end gap-2 mt-6">
-            <button className="btn-secondary" disabled={busy} onClick={cerrar}>{t('common.cancel')}</button>
-            <button className="btn-primary" disabled={busy} onClick={guardar}>{busy ? t('common.loading') : t('users.createAccount')}</button>
+            <Button disabled={busy} onClick={cerrar}>{t('common.cancel')}</Button>
+            <Button variant="primary" loading={busy} onClick={guardar}>
+              {busy ? t('common.saving') : t('users.createAccount')}
+            </Button>
           </div>
         </>
       )}

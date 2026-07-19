@@ -2,10 +2,14 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Users, Plus, Building2, Mail, MapPin, Pencil } from 'lucide-react';
+import { BotonBorrar } from '@/components/ui/BotonBorrar';
 import { listColaboradores, crearColaborador, actualizarColaborador, campoDuplicado, listSedes } from '@/lib/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Modal } from '@/components/ui/Modal';
 import { Select, type SelectOption } from '@/components/ui/Select';
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { SkeletonGrid } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { initials } from '@/lib/format';
 import { useApp } from '@/store/useApp';
@@ -17,7 +21,7 @@ const sedeOption = (s: Sede): SelectOption =>
 export function Colaboradores() {
   const { t } = useTranslation();
   const { canEdit } = useApp();
-  const { data: colabs = [], refetch } = useQuery({ queryKey: ['colabs'], queryFn: listColaboradores });
+  const { data: colabs = [], refetch, isLoading } = useQuery({ queryKey: ['colabs'], queryFn: listColaboradores });
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
   const nombreSede = (c: Colaborador) => sedes.find((s) => s.id === c.sede_id)?.nombre ?? c.sede;
   const [open, setOpen] = useState(false);
@@ -51,17 +55,39 @@ export function Colaboradores() {
   return (
     <div>
       <PageHeader title={t('collaborators.title')} subtitle={t('collaborators.subtitle')} icon={Users}
-        action={canEdit() && <button onClick={abrirNuevo} className="btn-primary"><Plus size={16} /> {t('collaborators.new')}</button>} />
+        action={canEdit() && <Button variant="primary" icon={Plus} onClick={abrirNuevo}>{t('collaborators.new')}</Button>} />
+
+      {isLoading && <SkeletonGrid count={6} />}
+
+      {!isLoading && colabs.length === 0 && (
+        <div className="card">
+          <EmptyState
+            icon={Users}
+            title={t('collaborators.emptyTitle')}
+            description={t('collaborators.emptyDesc')}
+            action={canEdit() && <Button variant="primary" icon={Plus} onClick={abrirNuevo}>{t('collaborators.new')}</Button>}
+          />
+        </div>
+      )}
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {colabs.map((c) => (
+        {!isLoading && colabs.map((c) => (
           <div key={c.cedula} className="card p-5 relative group">
-            {canEdit() && (
-              <button onClick={() => abrirEdicion(c)} title={t('common.edit')}
-                className="absolute top-3 right-3 p-1.5 rounded-lg text-ink-400 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-ink-100 dark:hover:bg-white/10 transition">
-                <Pencil size={15} />
-              </button>
-            )}
+            <div className="absolute top-3 right-3 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+              {canEdit() && (
+                <button onClick={() => abrirEdicion(c)} title={t('common.edit')}
+                  className="p-1.5 rounded-lg text-ink-400 hover:bg-ink-100 dark:hover:bg-white/10 transition">
+                  <Pencil size={15} />
+                </button>
+              )}
+              <BotonBorrar
+                entidad="colaboradores"
+                id={c.cedula}
+                etiqueta={`${c.nombre} · C.C. ${c.cedula}`}
+                invalidar={['colaboradores', 'solicitudesPendientes']}
+                className="p-1.5 rounded-lg text-danger hover:bg-danger/10 transition"
+              />
+            </div>
             <div className="flex items-center gap-3 mb-3">
               <div className="w-11 h-11 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center font-bold">{initials(c.nombre)}</div>
               <div className="min-w-0">
@@ -99,8 +125,10 @@ export function Colaboradores() {
           </div>
         </div>
         <div className="flex justify-end gap-2 mt-6">
-          <button onClick={cerrar} disabled={busy} className="btn-secondary">{t('common.cancel')}</button>
-          <button onClick={save} disabled={busy} className="btn-primary">{t('common.save')}</button>
+          <Button onClick={cerrar} disabled={busy}>{t('common.cancel')}</Button>
+          <Button variant="primary" onClick={save} loading={busy}>
+            {busy ? t('common.saving') : t('common.save')}
+          </Button>
         </div>
       </Modal>
     </div>

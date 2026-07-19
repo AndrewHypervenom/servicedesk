@@ -2,14 +2,16 @@ import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Undo2, Search, Warehouse, Truck, FileSignature, Eye, Check, X, Plus } from 'lucide-react';
+import { Undo2, Search, Warehouse, Truck, FileSignature, Eye, Check, X, Plus, PackageX } from 'lucide-react';
 import { listEquipos, listProveedores, getColaborador, devolverEquipo, createActa, subirPdfActa } from '@/lib/api';
 import { generarActaPdf, abrirBlob, type ActaItem } from '@/lib/pdf';
 import { ACTA_DEVOLUCION } from '@/lib/actaTemplates';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { SignaturePad, type SignatureHandle } from '@/components/ui/SignaturePad';
 import { Select } from '@/components/ui/Select';
 import { EstadoBadge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { useApp } from '@/store/useApp';
 import type { Equipo } from '@/types';
@@ -127,7 +129,9 @@ export function Devolucion() {
                 </button>
               );
             })}
-            {candidatos.length === 0 && <p className="text-sm text-ink-400 text-center py-6">{t('common.empty')}</p>}
+            {candidatos.length === 0 && (
+              <EmptyState variant="search" icon={PackageX} title={t('common.noResultsTitle')} description={t('return.noCandidates')} className="!py-8" />
+            )}
           </div>
         </div>
 
@@ -194,9 +198,9 @@ export function Devolucion() {
             </div>
 
             <div className="flex justify-end">
-              <button className="btn-primary" disabled={busy} onClick={finalizar}>
-                {busy ? t('common.loading') : <><FileSignature size={16} /> {t('return.generate')}</>}
-              </button>
+              <Button variant="primary" loading={busy} icon={FileSignature} onClick={finalizar}>
+                {busy ? t('common.saving') : t('return.generate')}
+              </Button>
             </div>
           </motion.div>
         )}

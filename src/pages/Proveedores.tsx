@@ -7,6 +7,10 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { BotonBorrar } from '@/components/ui/BotonBorrar';
+import { SkeletonGrid } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { useApp } from '@/store/useApp';
 import type { Proveedor } from '@/types';
@@ -19,7 +23,7 @@ const TIPOS = ['ARRENDADOR', 'PROVEEDOR_COMPRA', 'PROYECTO_CLIENTE', 'BODEGA_INT
 export function Proveedores() {
   const { t } = useTranslation();
   const { can } = useApp();
-  const { data: provs = [], refetch } = useQuery({ queryKey: ['proveedores'], queryFn: listProveedores });
+  const { data: provs = [], refetch, isLoading } = useQuery({ queryKey: ['proveedores'], queryFn: listProveedores });
   const { data: equipos = [] } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
   const [open, setOpen] = useState(false);
   const puedeCrear = can('ADMIN', 'LIDER', 'JEFE_SEDE');
@@ -27,23 +31,43 @@ export function Proveedores() {
   return (
     <div>
       <PageHeader title={t('nav.suppliers')} subtitle={t('suppliers.subtitle')} icon={Truck}
-        action={puedeCrear && <button onClick={() => setOpen(true)} className="btn-primary"><Plus size={16} /> {t('suppliers.new')}</button>} />
+        action={puedeCrear && <Button variant="primary" icon={Plus} onClick={() => setOpen(true)}>{t('suppliers.new')}</Button>} />
 
-      {provs.length === 0 && <div className="card p-12 text-center text-ink-400">{t('common.empty')}</div>}
+      {isLoading && <SkeletonGrid count={6} />}
+
+      {!isLoading && provs.length === 0 && (
+        <div className="card">
+          <EmptyState
+            icon={Truck}
+            title={t('suppliers.emptyTitle')}
+            description={t('suppliers.emptyDesc')}
+            action={puedeCrear && <Button variant="primary" icon={Plus} onClick={() => setOpen(true)}>{t('suppliers.new')}</Button>}
+          />
+        </div>
+      )}
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {provs.map((p) => {
+        {!isLoading && provs.map((p) => {
           const Icon = tipoIcon[p.tipo] ?? Truck;
           const count = equipos.filter((e) => e.proveedor_propietario === p.nombre).length;
           return (
-            <div key={p.id} className="card p-5">
+            <div key={p.id} className="card p-5 relative group">
+              <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+                <BotonBorrar
+                  entidad="proveedores"
+                  id={p.id}
+                  etiqueta={p.nombre}
+                  invalidar={['proveedores', 'solicitudesPendientes']}
+                  className="p-1.5 rounded-lg text-danger hover:bg-danger/10 transition"
+                />
+              </div>
               <div className="flex items-center gap-3 mb-3">
                 <div className="w-11 h-11 rounded-2xl bg-brand-500/10 text-brand-600 grid place-items-center"><Icon size={22} /></div>
                 <div>
                   <div className="font-semibold">{p.nombre}</div>
                   <Badge>{p.tipo.replace('_', ' ')}</Badge>
                 </div>
-                <div className="ml-auto text-2xl font-bold text-brand-600">{count}</div>
+                <div className="ml-auto text-2xl font-bold text-brand-600 mr-7">{count}</div>
               </div>
               {p.observacion && <p className="text-sm text-ink-400">{p.observacion}</p>}
             </div>
@@ -91,8 +115,10 @@ function NuevoProveedorModal({ open, onClose, onSaved }: { open: boolean; onClos
         <div className="sm:col-span-2"><label className="label">{t('suppliers.note')}</label><input className="input" value={f.observacion ?? ''} onChange={(e) => set('observacion', e.target.value)} /></div>
       </div>
       <div className="flex justify-end gap-2 mt-6">
-        <button className="btn-secondary" disabled={busy} onClick={onClose}>{t('common.cancel')}</button>
-        <button className="btn-primary" disabled={busy} onClick={guardar}>{busy ? t('common.loading') : t('common.save')}</button>
+        <Button disabled={busy} onClick={onClose}>{t('common.cancel')}</Button>
+        <Button variant="primary" loading={busy} onClick={guardar}>
+          {busy ? t('common.saving') : t('common.save')}
+        </Button>
       </div>
     </Modal>
   );

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Plug, Plus, Copy, Check, ArrowDownToLine, ArrowUpFromLine, Webhook } from 'lucide-react';
 import { listIntegraciones, createIntegracion } from '@/lib/api';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { Modal } from '@/components/ui/Modal';
 import { Badge } from '@/components/ui/Badge';
 import { toast } from '@/components/ui/Toast';
@@ -58,11 +59,21 @@ export function Integraciones() {
       <div className="grid lg:grid-cols-2 gap-6">
         <div>
           <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-ink-500"><ArrowDownToLine size={16} /> {t('integrations.incoming')}</div>
-          <div className="space-y-3">{entrantes.map((i) => <Card key={i.id} i={i} />)}{entrantes.length === 0 && <p className="text-sm text-ink-400">{t('common.empty')}</p>}</div>
+          <div className="space-y-3">
+            {entrantes.map((i) => <Card key={i.id} i={i} />)}
+            {entrantes.length === 0 && (
+              <div className="card"><EmptyState icon={ArrowDownToLine} title={t('integrations.noneIncoming')} className="!py-8" /></div>
+            )}
+          </div>
         </div>
         <div>
           <div className="flex items-center gap-2 mb-3 text-sm font-semibold text-ink-500"><ArrowUpFromLine size={16} /> {t('integrations.outgoing')}</div>
-          <div className="space-y-3">{salientes.map((i) => <Card key={i.id} i={i} />)}{salientes.length === 0 && <p className="text-sm text-ink-400">{t('common.empty')}</p>}</div>
+          <div className="space-y-3">
+            {salientes.map((i) => <Card key={i.id} i={i} />)}
+            {salientes.length === 0 && (
+              <div className="card"><EmptyState icon={ArrowUpFromLine} title={t('integrations.noneOutgoing')} className="!py-8" /></div>
+            )}
+          </div>
         </div>
       </div>
 

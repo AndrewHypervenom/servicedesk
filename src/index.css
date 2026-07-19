@@ -69,9 +69,115 @@ body {
   .badge {
     @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold;
   }
+
+  /* Card que responde al puntero. Es opt-in y no toca `.card`: muchas cards
+     del sistema son contenedores pasivos y levantarlas todas al pasar el ratón
+     sugeriría que se puede hacer clic donde no se puede. */
+  .card-interactive {
+    @apply card transition-[transform,box-shadow,border-color] duration-300 ease-out
+           hover:-translate-y-1 hover:shadow-card-hover hover:border-brand-500/30
+           active:translate-y-0 active:duration-75;
+  }
+
+  /* Barrido de luz para botones de acción principal. El pseudo-elemento se
+     desplaza en X (compositor puro) en vez de animar un background-position. */
+  .shine {
+    @apply relative overflow-hidden isolate;
+  }
+  .shine::before {
+    content: '';
+    @apply absolute inset-0 -z-10 pointer-events-none;
+    background: linear-gradient(115deg, transparent 25%, rgba(255,255,255,0.35) 50%, transparent 75%);
+    transform: translateX(-120%);
+    transition: transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .shine:hover::before { transform: translateX(120%); }
+
+  /* Texto con degradado corporativo, para cifras y titulares destacados. */
+  .gradient-text {
+    @apply bg-gradient-to-br from-brand-500 to-magenta-500 bg-clip-text text-transparent;
+  }
+
+  /* Bloque de carga. El shimmer va en ::after para no depender de opacidad
+     animada, que en listas largas cuesta caro al compositor. */
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-ink-100 dark:bg-white/[0.06];
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+    animation: skeleton-shimmer 1.6s infinite;
+  }
+  .dark .skeleton::after {
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.07), transparent);
+  }
+}
+
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+
+@keyframes aurora-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  33%      { transform: translate3d(4%, -3%, 0) scale(1.12); }
+  66%      { transform: translate3d(-3%, 4%, 0) scale(0.95); }
 }
 
 .bg-grid {
   background-image: radial-gradient(circle at 1px 1px, rgba(120,120,128,0.08) 1px, transparent 0);
   background-size: 22px 22px;
+}
+
+/* Manchas de color muy desenfocadas detrás de la app. Van en un contenedor
+   `fixed` con `pointer-events-none` para que no intercepten clics ni crezcan
+   el área de scroll. `will-change` las sube a su propia capa: sin eso, el
+   blur de 120px se recalcula en CPU en cada fotograma. */
+.aurora {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+/* Variante para acotar la aurora a un contenedor (el panel del login) en vez
+   de al viewport. El padre debe ser `relative`. */
+.aurora-contained { position: absolute; }
+.aurora span {
+  position: absolute;
+  border-radius: 9999px;
+  filter: blur(120px);
+  will-change: transform;
+  animation: aurora-drift 26s ease-in-out infinite;
+}
+.aurora span:nth-child(1) {
+  top: -18%; left: -8%; width: 42rem; height: 42rem;
+  background: rgba(16, 212, 81, 0.18);
+}
+.aurora span:nth-child(2) {
+  bottom: -22%; right: -10%; width: 38rem; height: 38rem;
+  background: rgba(179, 61, 158, 0.14);
+  animation-duration: 32s;
+  animation-delay: -8s;
+}
+.dark .aurora span:nth-child(1) { background: rgba(16, 212, 81, 0.13); }
+.dark .aurora span:nth-child(2) { background: rgba(179, 61, 158, 0.12); }
+
+/* Respeta la preferencia del sistema. Se anulan los bucles infinitos (shimmer,
+   aurora) y se recorta cualquier transición a un valor imperceptible, en vez
+   de ponerla a 0: algunos navegadores no disparan `transitionend` con 0s y
+   hay componentes que esperan ese evento para desmontarse. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton::after { animation: none; }
+  .aurora span { animation: none; }
+  .shine::before { transition: none; }
+  .card-interactive:hover { transform: none; }
+
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

@@ -2,7 +2,7 @@ export type TipoActivo =
   | 'PORTATIL' | 'ESCRITORIO' | 'CELULAR' | 'MONITOR'
   | 'PERIFERICO' | 'BASE_RECALENTAMIENTO' | 'CARGADOR' | 'OTRO';
 
-export type EstadoFisico = 'BUENO' | 'REGULAR' | 'DANADO' | 'DE_BAJA';
+export type EstadoFisico = 'BUENO' | 'REGULAR' | 'CON_FALLA' | 'DANADO' | 'DE_BAJA';
 
 export type EstadoAsignacion =
   | 'DISPONIBLE' | 'ASIGNADO' | 'EN_MANTENIMIENTO' | 'EN_DEVOLUCION' | 'DE_BAJA';
@@ -58,6 +58,9 @@ export interface Equipo {
   observaciones?: string | null;
   creado_en: string;
   actualizado_en: string;
+  /** Borrado suave. Solo el ADMIN recibe filas con esto relleno (ver RLS). */
+  eliminado_en?: string | null;
+  eliminado_por?: string | null;
 }
 
 export interface Colaborador {
@@ -72,6 +75,8 @@ export interface Colaborador {
   sede_id?: string | null;    // la sede real (FK a sedes)
   activo: boolean;
   creado_en: string;
+  eliminado_en?: string | null;
+  eliminado_por?: string | null;
 }
 
 export interface Proveedor {
@@ -82,6 +87,28 @@ export interface Proveedor {
   correo?: string | null;
   telefono?: string | null;
   observacion?: string | null;
+  eliminado_en?: string | null;
+  eliminado_por?: string | null;
+}
+
+/** Entidades sobre las que existe borrado suave. */
+export type EntidadBorrable = 'equipos' | 'colaboradores' | 'proveedores';
+
+export type EstadoSolicitud = 'PENDIENTE' | 'APROBADA' | 'RESTAURADA';
+
+export interface SolicitudBorrado {
+  id: number;
+  entidad: EntidadBorrable;
+  registro_id: string;
+  /** Nombre legible copiado al solicitar, para que la solicitud siga
+   *  entendiéndose aunque el registro acabe eliminado definitivamente. */
+  etiqueta: string;
+  motivo?: string | null;
+  estado: EstadoSolicitud;
+  solicitado_por: string;
+  solicitado_en: string;
+  resuelto_por?: string | null;
+  resuelto_en?: string | null;
 }
 
 export interface Marca {

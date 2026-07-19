@@ -2,10 +2,17 @@ import { supabase } from './supabase';
 import type {
   Equipo, Colaborador, Proveedor, Movimiento, Acta, Perfil, Integracion,
   TipoMovimiento, EstadoAsignacion, RolUsuario, Pais, Sede, Marca,
+  EntidadBorrable, SolicitudBorrado,
 } from '@/types';
 
+// El filtro `eliminado_en is null` se repite en cliente aunque RLS ya lo aplica.
+// No es redundancia inútil: para el ADMIN la política SÍ devuelve los ocultos
+// (los necesita en Solicitudes), así que sin este filtro el administrador vería
+// registros retirados mezclados en los listados normales.
 export async function listEquipos(): Promise<Equipo[]> {
-  const { data, error } = await supabase.from('equipos').select('*').order('creado_en', { ascending: false });
+  const { data, error } = await supabase.from('equipos').select('*')
+    .is('eliminado_en', null)
+    .order('creado_en', { ascending: false });
   if (error) throw error;
   return data as Equipo[];
 }
@@ -49,6 +56,21 @@ export async function recentMovimientos(limit = 8): Promise<Movimiento[]> {
   return (data as Movimiento[]) ?? [];
 }
 
+/**
+ * Movimientos desde una fecha, para las series temporales de Analítica.
+ * Filtra en el servidor en vez de traerlo todo y recortar en el cliente: el
+ * histórico de movimientos crece sin techo y es la tabla más grande del sistema.
+ */
+export async function movimientosDesde(desde: Date): Promise<Movimiento[]> {
+  const { data, error } = await supabase
+    .from('movimientos')
+    .select('*')
+    .gte('fecha', desde.toISOString())
+    .order('fecha', { ascending: true });
+  if (error) throw error;
+  return (data as Movimiento[]) ?? [];
+}
+
 export async function asignarEquipo(p: {
   equipoId: string; cedula: string; proyecto: string; actaId?: string; registradoPor?: string; obs?: string;
 }): Promise<void> {
@@ -81,7 +103,8 @@ export async function registrarMovimiento(p: {
 }
 
 export async function listColaboradores(): Promise<Colaborador[]> {
-  const { data } = await supabase.from('colaboradores').select('*').order('nombre');
+  const { data } = await supabase.from('colaboradores').select('*')
+    .is('eliminado_en', null).order('nombre');
   return (data as Colaborador[]) ?? [];
 }
 export async function getColaborador(cedula: string): Promise<Colaborador | null> {
@@ -122,7 +145,8 @@ export async function actualizarColaborador(cedula: string, c: Partial<Colaborad
 }
 
 export async function listProveedores(): Promise<Proveedor[]> {
-  const { data } = await supabase.from('proveedores').select('*').order('nombre');
+  const { data } = await supabase.from('proveedores').select('*')
+    .is('eliminado_en', null).order('nombre');
   return (data as Proveedor[]) ?? [];
 }
 export async function createProveedor(p: Partial<Proveedor>): Promise<void> {
@@ -232,6 +256,102 @@ export async function crearUsuario(p: {
   }
   if (data?.error) throw new Error(data.error);
   return { email: data.email, password: data.password };
+}
+
+// ═══ Borrado suave y solicitudes ═════════════════════════════════════════
+// Las reglas de quién puede hacer qué viven en RLS y en los triggers de
+// `sql/01-borrado-suave.sql`. Lo de aquí es la llamada, no el permiso: si el
+// SQL no se ha ejecutado, estas funciones fallarán o —peor— borrarán sin
+// control. Ver el README de esa carpeta.
+
+/**
+ * Oculta un registro y abre la entrada correspondiente en la cola.
+ *
+ * No es una transacción: Supabase no expone varias sentencias en una sola
+ * llamada desde el cliente. Se oculta primero y se registra la solicitud
+ * después, porque el orden inverso dejaría solicitudes apuntando a registros
+ * visibles. Si falla el segundo paso se revierte el ocultado a mano.
+ */
+export async function ocultarRegistro(p: {
+  entidad: EntidadBorrable;
+  id: string;
+  etiqueta: string;
+  motivo?: string;
+  requiereAprobacion: boolean;
+  solicitadoPor: string;
+}): Promise<void> {
+  const col = p.entidad === 'colaboradores' ? 'cedula' : 'id';
+  const { error } = await supabase
+    .from(p.entidad)
+    .update({ eliminado_en: new Date().toISOString() })
+    .eq(col, p.id);
+  if (error) throw error;
+
+  // La solicitud se crea SIEMPRE, también cuando la oculta el ADMIN. No es
+  // solo una cola de aprobación: es el único registro de qué hay oculto. Sin
+  // ella, lo que el administrador retira desaparece de todas las pantallas sin
+  // dejar rastro y ya no hay forma de restaurarlo ni de purgarlo.
+  const { error: errSol } = await supabase.from('solicitudes_borrado').insert({
+    entidad: p.entidad,
+    registro_id: p.id,
+    etiqueta: p.etiqueta,
+    motivo: p.motivo ?? null,
+    solicitado_por: p.solicitadoPor,
+  });
+
+  if (errSol) {
+    // Sin la solicitud, el registro quedaría oculto y sin que nadie pueda
+    // resolverlo: invisible para quien lo ocultó y sin entrada en la cola.
+    await supabase.from(p.entidad).update({ eliminado_en: null }).eq(col, p.id);
+    throw errSol;
+  }
+}
+
+export async function listSolicitudes(soloPendientes = false): Promise<SolicitudBorrado[]> {
+  let q = supabase.from('solicitudes_borrado').select('*').order('solicitado_en', { ascending: false });
+  if (soloPendientes) q = q.eq('estado', 'PENDIENTE');
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data as SolicitudBorrado[]) ?? [];
+}
+
+/** Cuenta de pendientes, para el distintivo del menú. */
+export async function contarSolicitudesPendientes(): Promise<number> {
+  const { count, error } = await supabase
+    .from('solicitudes_borrado')
+    .select('id', { count: 'exact', head: true })
+    .eq('estado', 'PENDIENTE');
+  if (error) throw error;
+  return count ?? 0;
+}
+
+/** Devuelve el registro a la vista y cierra la solicitud. */
+export async function restaurarRegistro(s: SolicitudBorrado, adminId: string): Promise<void> {
+  const col = s.entidad === 'colaboradores' ? 'cedula' : 'id';
+  const { error } = await supabase
+    .from(s.entidad).update({ eliminado_en: null }).eq(col, s.registro_id);
+  if (error) throw error;
+
+  const { error: e2 } = await supabase.from('solicitudes_borrado')
+    .update({ estado: 'RESTAURADA', resuelto_por: adminId, resuelto_en: new Date().toISOString() })
+    .eq('id', s.id);
+  if (e2) throw e2;
+}
+
+/**
+ * Elimina el registro de la base. Puede fallar por diseño: los triggers
+ * bloquean el borrado de equipos y colaboradores con historial. Ese error se
+ * propaga tal cual para que la pantalla lo muestre.
+ */
+export async function eliminarDefinitivo(s: SolicitudBorrado, adminId: string): Promise<void> {
+  const col = s.entidad === 'colaboradores' ? 'cedula' : 'id';
+  const { error } = await supabase.from(s.entidad).delete().eq(col, s.registro_id);
+  if (error) throw error;
+
+  const { error: e2 } = await supabase.from('solicitudes_borrado')
+    .update({ estado: 'APROBADA', resuelto_por: adminId, resuelto_en: new Date().toISOString() })
+    .eq('id', s.id);
+  if (e2) throw e2;
 }
 
 export async function listPaises(): Promise<Pais[]> {

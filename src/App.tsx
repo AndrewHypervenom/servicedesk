@@ -8,6 +8,8 @@ import { ToastHost } from '@/components/ui/Toast';
 import { Login } from '@/pages/Login';
 import { DefinirPassword } from '@/pages/DefinirPassword';
 import { Dashboard } from '@/pages/Dashboard';
+import { Analitica } from '@/pages/Analitica';
+import { Solicitudes } from '@/pages/Solicitudes';
 import { Inventario } from '@/pages/Inventario';
 import { EquipoDetalle } from '@/pages/EquipoDetalle';
 import { Asignar } from '@/pages/Asignar';
@@ -57,6 +59,7 @@ export default function App() {
         <Routes>
           <Route element={<AppLayout />}>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/analitica" element={<Guard><Analitica /></Guard>} />
             <Route path="/inventario" element={<Inventario />} />
             <Route path="/equipo/:id" element={<EquipoDetalle />} />
             <Route path="/asignar" element={<Guard><Asignar /></Guard>} />
@@ -69,6 +72,7 @@ export default function App() {
             <Route path="/sedes" element={<Guard><Sedes /></Guard>} />
             <Route path="/integraciones" element={<Guard><Integraciones /></Guard>} />
             <Route path="/usuarios" element={<Guard><Usuarios /></Guard>} />
+            <Route path="/solicitudes" element={<Guard><Solicitudes /></Guard>} />
             <Route path="/ajustes" element={<Ajustes />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

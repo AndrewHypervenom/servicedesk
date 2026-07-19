@@ -22,5 +22,9 @@ pnpm-debug.log*
 # Supabase
 supabase
 
+# Datos de trabajo: no deben viajar en el repositorio
+BASE_EQUIPOS_PR.xlsx
+*.xlsx
+
 # Claude
 .claude

@@ -5,12 +5,14 @@ import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Printer, Download, QrCode, User, MapPin, Calendar, FileText,
-  Cpu, ShieldCheck, Building2, History, Pencil,
+  Cpu, ShieldCheck, Building2, History, Pencil, PackageX,
 } from 'lucide-react';
 import { getEquipo, trazabilidad, getColaborador } from '@/lib/api';
 import { equipoQrDataUrl, imprimirEtiquetaQr, descargarQr } from '@/lib/qr';
 import { fmtDate, diasRestantes } from '@/lib/format';
 import { EstadoBadge, FisicoBadge, Badge } from '@/components/ui/Badge';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 import { NuevoEquipoModal } from '@/components/NuevoEquipoModal';
 import { useApp } from '@/store/useApp';
 import type { Colaborador } from '@/types';
@@ -31,12 +33,37 @@ export function EquipoDetalle() {
   useEffect(() => { if (equipo) equipoQrDataUrl(equipo.codigo_qr, 300).then(setQr); }, [equipo]);
   useEffect(() => { if (equipo?.cedula_asignado) getColaborador(equipo.cedula_asignado).then(setColab); else setColab(null); }, [equipo]);
 
-  if (isLoading) return <div className="py-20 text-center text-ink-400">{t('common.loading')}</div>;
-  if (!equipo) return (
-    <div className="py-20 text-center text-ink-400">
-      {t('common.empty')}
-      <div className="mt-4"><Link to="/inventario" className="btn-secondary inline-flex"><ArrowLeft size={16} /> {t('common.back')}</Link></div>
+  // Esqueleto con la misma silueta de la página real (cabecera + 2 columnas)
+  // para que al llegar el dato no salte el layout.
+  if (isLoading) return (
+    <div>
+      <Skeleton className="h-9 w-32 mb-6" />
+      <div className="grid lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2 card p-6 space-y-4">
+          <div className="flex items-center gap-4">
+            <Skeleton className="w-14 h-14 rounded-2xl shrink-0" />
+            <div className="flex-1 space-y-2">
+              <Skeleton className="h-6 w-2/3" />
+              <Skeleton className="h-4 w-1/3" />
+            </div>
+          </div>
+          <SkeletonText lines={6} />
+        </div>
+        <div className="card p-6 space-y-4">
+          <Skeleton className="h-40 w-40 mx-auto rounded-xl" />
+          <SkeletonText lines={3} />
+        </div>
+      </div>
     </div>
+  );
+
+  if (!equipo) return (
+    <EmptyState
+      icon={PackageX}
+      title={t('equipo.notFound')}
+      description={t('equipo.notFoundDesc')}
+      action={<Link to="/inventario" className="btn-secondary inline-flex"><ArrowLeft size={16} /> {t('common.back')}</Link>}
+    />
   );
 
   const dias = diasRestantes(equipo.fecha_vencimiento_contrato);

@@ -1,8 +1,12 @@
 {
-  "app": { "name": "Service Desk", "subtitle": "Inventário e Rastreabilidade" },
+  "app": {
+    "name": "Service Desk",
+    "subtitle": "Inventário e Rastreabilidade"
+  },
   "nav": {
     "dashboard": "Painel",
     "inventory": "Inventário",
+    "analytics": "Analítica",
     "sedes": "Unidades",
     "assign": "Atribuir equipamento",
     "return": "Devolução",
@@ -55,7 +59,14 @@
     "new": "Novo",
     "add": "Adicionar",
     "edit": "Editar",
-    "view": "Ver"
+    "view": "Ver",
+    "noResultsTitle": "Sem resultados",
+    "noResultsDesc": "Nenhum registro corresponde à busca ou aos filtros ativos.",
+    "clearFilters": "Limpar filtros",
+    "selected_one": "{{count}} selecionado",
+    "selected_other": "{{count}} selecionados",
+    "retry": "Tentar novamente",
+    "saving": "Salvando…"
   },
   "auth": {
     "login": "Entrar",
@@ -72,7 +83,14 @@
     "name": "Nome completo",
     "demoMode": "Modo demonstração",
     "demoNote": "Sem credenciais do Supabase. Explore a interface com dados de exemplo.",
-    "enterDemo": "Entrar no modo demo"
+    "enterDemo": "Entrar no modo demo",
+    "signingIn": "Entrando…",
+    "featureQr": "QR imprimível + leitura com câmera",
+    "featureActa": "Termos com assinatura digital e e-mail",
+    "featureI18n": "Español · Português · API aberta",
+    "showPassword": "Mostrar senha",
+    "hidePassword": "Ocultar senha",
+    "secureConnection": "Conexão criptografada · Sessão protegida"
   },
   "firstLogin": {
     "title": "Defina sua senha",
@@ -91,14 +109,18 @@
     "selectCountry": "País…",
     "noCities": "Ainda não há unidades.",
     "sedeIncompleta": "Escreva o nome da unidade e escolha um país.",
-    "paisEnUso": "Não é possível excluir: o país tem unidades associadas."
+    "paisEnUso": "Não é possível excluir: o país tem unidades associadas.",
+    "noCountriesDesc": "Adicione o primeiro país para poder criar unidades abaixo.",
+    "noCitiesDesc": "Crie um país primeiro e depois adicione suas unidades."
   },
   "suppliers": {
     "subtitle": "Fornecedores e origens do inventário",
     "new": "Novo fornecedor",
     "name": "Nome",
     "contact": "Contato",
-    "note": "Observação"
+    "note": "Observação",
+    "emptyTitle": "Ainda não há fornecedores",
+    "emptyDesc": "Cadastre locadores, depósitos e projetos de cliente para saber de quem é cada equipamento do inventário."
   },
   "proveedorTipo": {
     "ARRENDADOR": "Locador (equipamentos alugados)",
@@ -119,10 +141,13 @@
     "byStatus": "Por estado de atribuição",
     "expiring": "Contratos a vencer",
     "expiringSub": "Alugados nos próximos 30 dias",
+    "trendTitle": "{{count}} equipamento(s) cadastrado(s) nos últimos 30 dias",
     "noExpiring": "Sem contratos próximos do vencimento",
     "daysLeft": "{{d}} dias",
     "recentMovements": "Movimentações recentes",
-    "quickActions": "Ações rápidas"
+    "quickActions": "Ações rápidas",
+    "noMovements": "Ainda sem movimentações",
+    "noMovementsDesc": "As atribuições e devoluções aparecerão aqui assim que você registrar a primeira."
   },
   "equipo": {
     "marca": "Marca",
@@ -151,7 +176,9 @@
     "traceability": "Rastreabilidade completa",
     "noMovements": "Ainda não há movimentações registradas",
     "printQr": "Imprimir QR",
-    "downloadQr": "Baixar QR"
+    "downloadQr": "Baixar QR",
+    "notFound": "Equipamento não encontrado",
+    "notFoundDesc": "O equipamento não existe ou foi baixado. Também pode estar fora das unidades atribuídas a você."
   },
   "tipo": {
     "PORTATIL": "Notebook",
@@ -190,12 +217,14 @@
   "estadoFis": {
     "BUENO": "Bom",
     "REGULAR": "Regular",
+    "CON_FALLA": "Com falha",
     "DANADO": "Danificado",
     "DE_BAJA": "Baixado"
   },
   "estadoFisDesc": {
     "BUENO": "Sem danos, funciona corretamente.",
     "REGULAR": "Uso ou desgaste visível, ainda operacional.",
+    "CON_FALLA": "Funciona, mas tem um defeito identificado.",
     "DANADO": "Com falhas ou danos que exigem atenção.",
     "DE_BAJA": "Não recuperável; para baixa."
   },
@@ -236,7 +265,24 @@
     "title": "Inventário de equipamentos",
     "subtitle": "{{n}} equipamentos registrados",
     "newEquipment": "Registrar equipamento",
-    "columns": { "equipment": "Equipamento", "serial": "Série", "type": "Tipo", "status": "Estado", "owner": "Propriedade", "project": "Projeto" }
+    "columns": {
+      "equipment": "Equipamento",
+      "serial": "Série",
+      "type": "Tipo",
+      "status": "Estado",
+      "owner": "Propriedade",
+      "project": "Projeto"
+    },
+    "emptyTitle": "Ainda não há equipamentos cadastrados",
+    "emptyDesc": "Cadastre o primeiro equipamento ou importe sua base a partir de um arquivo Excel para começar a operar o inventário.",
+    "bulkExport": "Exportar seleção",
+    "bulkQr": "Baixar QR",
+    "bulkClear": "Remover seleção",
+    "qrDone_one": "{{count}} código QR baixado",
+    "qrDone_other": "{{count}} códigos QR baixados"
+  },
+  "import": {
+    "button": "Importar"
   },
   "form": {
     "newTitle": "Registrar novo equipamento",
@@ -274,7 +320,8 @@
     "editData": "Editar dados do colaborador",
     "reviewData": "Revise e ajuste os dados que sairão no termo",
     "novedades": "Novidades do termo (opcional)",
-    "noneSelected": "Selecione ao menos um equipamento"
+    "noneSelected": "Selecione ao menos um equipamento",
+    "noCandidates": "Nenhum equipamento disponível corresponde à busca."
   },
   "return": {
     "title": "Devolução de equipamento",
@@ -284,7 +331,8 @@
     "selectSupplier": "Selecione o fornecedor",
     "generate": "Gerar termo de devolução",
     "done": "Devolução registrada",
-    "selectMultiple": "Selecione um ou vários equipamentos para devolver"
+    "selectMultiple": "Selecione um ou vários equipamentos para devolver",
+    "noCandidates": "Este colaborador não possui equipamentos atribuídos."
   },
   "scan": {
     "title": "Ler código QR",
@@ -314,7 +362,9 @@
     "copied": "Copiado",
     "events": "Eventos",
     "url": "URL destino",
-    "active": "Ativa"
+    "active": "Ativa",
+    "noneIncoming": "Sem integrações de entrada",
+    "noneOutgoing": "Sem integrações de saída"
   },
   "users": {
     "title": "Usuários e perfis",
@@ -334,7 +384,9 @@
     "credentialsHint": "Conta criada. Copie e envie estes dados ao usuário; ao entrar poderá alterar a senha em Ajustes.",
     "link": "Link de acesso",
     "tempPassword": "Senha temporária",
-    "copyAll": "Copiar os três dados"
+    "copyAll": "Copiar os três dados",
+    "emptyTitle": "Ainda não há usuários",
+    "emptyDesc": "Crie a primeira conta para que sua equipe possa acessar o Service Desk."
   },
   "collaborators": {
     "title": "Colaboradores",
@@ -343,7 +395,9 @@
     "edit": "Editar colaborador",
     "editHint": "O CPF identifica o colaborador e não pode ser alterado",
     "duplicate": "Já existe um colaborador com o CPF {{cedula}}",
-    "duplicateEmail": "Já existe um colaborador com o e-mail {{correo}}"
+    "duplicateEmail": "Já existe um colaborador com o e-mail {{correo}}",
+    "emptyTitle": "Ainda não há colaboradores",
+    "emptyDesc": "Cadastre as pessoas que recebem equipamentos. Sem colaboradores não é possível gerar atribuições nem termos de entrega."
   },
   "acta": {
     "title": "Termos digitais",
@@ -368,7 +422,9 @@
     "signedFile": "Arquivo assinado",
     "noEquipment": "Equipamento associado ao termo não encontrado",
     "preview": "Pré-visualizar termo",
-    "previewWatermark": "PRÉ-VISUALIZAÇÃO — SEM VALIDADE"
+    "previewWatermark": "PRÉ-VISUALIZAÇÃO — SEM VALIDADE",
+    "emptyTitle": "Ainda não há termos",
+    "emptyDesc": "Os termos são gerados automaticamente ao atribuir ou receber um equipamento. Registre a primeira movimentação para vê-los aqui."
   },
   "settings": {
     "title": "Ajustes",

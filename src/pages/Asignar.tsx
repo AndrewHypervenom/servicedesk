@@ -2,14 +2,16 @@ import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserPlus, Search, Check, ArrowRight, ArrowLeft, FileSignature, Mail, Eye, Plus, X } from 'lucide-react';
+import { UserPlus, Search, Check, ArrowRight, ArrowLeft, FileSignature, Mail, Eye, Plus, X, SearchX } from 'lucide-react';
 import { listEquipos, getColaborador, asignarEquipo, createActa, subirPdfActa, listSedes } from '@/lib/api';
 import { generarActaPdf, abrirBlob, blobToBase64, type ActaItem } from '@/lib/pdf';
 import { supabase } from '@/lib/supabase';
 import { ACTA_ASIGNACION } from '@/lib/actaTemplates';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { EmptyState } from '@/components/ui/EmptyState';
 import { SignaturePad, type SignatureHandle } from '@/components/ui/SignaturePad';
 import { EstadoBadge } from '@/components/ui/Badge';
+import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { useApp } from '@/store/useApp';
 import type { Colaborador, Equipo } from '@/types';
@@ -229,7 +231,9 @@ export function Asignar() {
                   </button>
                 );
               })}
-              {filtered.length === 0 && <p className="text-sm text-ink-400 text-center py-6">{t('common.empty')}</p>}
+              {filtered.length === 0 && (
+                <EmptyState variant="search" icon={SearchX} title={t('common.noResultsTitle')} description={t('assign.noCandidates')} className="!py-8" />
+              )}
             </div>
             {seleccionados.length > 0 && (
               <div className="mt-5 pt-5 border-t border-ink-100 dark:border-white/10 space-y-3">
@@ -288,10 +292,10 @@ export function Asignar() {
             </label>
 
             <div className="flex justify-between mt-6">
-              <button className="btn-secondary" onClick={() => setStep(1)}><ArrowLeft size={16} /> {t('common.back')}</button>
-              <button className="btn-primary" disabled={busy} onClick={finalizar}>
-                {busy ? t('common.loading') : <><FileSignature size={16} /> {t('assign.generateActa')}</>}
-              </button>
+              <Button icon={ArrowLeft} disabled={busy} onClick={() => setStep(1)}>{t('common.back')}</Button>
+              <Button variant="primary" loading={busy} icon={FileSignature} onClick={finalizar}>
+                {busy ? t('common.saving') : t('assign.generateActa')}
+              </Button>
             </div>
           </motion.div>
         )}

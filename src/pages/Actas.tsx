@@ -8,6 +8,9 @@ import { PageHeader } from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { SignaturePad, type SignatureHandle } from '@/components/ui/SignaturePad';
+import { Button } from '@/components/ui/Button';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { SkeletonRows } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { fmtDate } from '@/lib/format';
 import { useApp } from '@/store/useApp';
@@ -16,7 +19,7 @@ import type { Acta } from '@/types';
 export function Actas() {
   const { t, i18n } = useTranslation();
   const { perfil } = useApp();
-  const { data: actas = [], refetch } = useQuery({ queryKey: ['actas'], queryFn: listActas });
+  const { data: actas = [], refetch, isLoading } = useQuery({ queryKey: ['actas'], queryFn: listActas });
   const { data: equipos = [] } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
   const { data: colaboradores = [] } = useQuery({ queryKey: ['colaboradores'], queryFn: listColaboradores });
 
@@ -106,8 +109,10 @@ export function Actas() {
         onChange={(e) => subirArchivo(e.target.files?.[0])}
       />
 
-      {actas.length === 0 ? (
-        <div className="card p-12 text-center text-ink-400">{t('common.empty')}</div>
+      {!isLoading && actas.length === 0 ? (
+        <div className="card">
+          <EmptyState icon={FileSignature} title={t('acta.emptyTitle')} description={t('acta.emptyDesc')} />
+        </div>
       ) : (
         <div className="card overflow-hidden">
           <div className="overflow-x-auto">
@@ -122,7 +127,8 @@ export function Actas() {
               </tr>
             </thead>
             <tbody>
-              {actas.map((a) => (
+              {isLoading && <SkeletonRows rows={6} cols={5} />}
+              {!isLoading && actas.map((a) => (
                 <tr key={a.id} className="border-b border-ink-50 dark:border-white/5 hover:bg-ink-50/60 dark:hover:bg-white/5">
                   <td className="px-5 py-3 font-mono text-xs">{a.consecutivo}</td>
                   <td className="px-4 py-3"><Badge>{t(`movimiento.${a.tipo === 'ENTREGA' ? 'ASIGNACION' : 'DEVOLUCION_COLABORADOR'}`)}</Badge></td>
@@ -172,10 +178,10 @@ export function Actas() {
         <p className="text-sm text-ink-400 mb-4">{t('acta.signHint')}</p>
         <SignaturePad ref={sigRef} />
         <div className="flex justify-end gap-2 mt-5">
-          <button className="btn-secondary" disabled={busy} onClick={() => setFirmando(null)}>{t('common.cancel')}</button>
-          <button className="btn-primary" disabled={busy} onClick={guardarFirma}>
-            {busy ? t('common.loading') : <><FileSignature size={16} /> {t('acta.sign')}</>}
-          </button>
+          <Button disabled={busy} onClick={() => setFirmando(null)}>{t('common.cancel')}</Button>
+          <Button variant="primary" loading={busy} icon={FileSignature} onClick={guardarFirma}>
+            {busy ? t('common.saving') : t('acta.sign')}
+          </Button>
         </div>
       </Modal>
     </div>

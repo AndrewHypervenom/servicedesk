@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { Boxes, Lock, KeyRound, LogOut } from 'lucide-react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 
 export function DefinirPassword() {
@@ -58,9 +59,9 @@ export function DefinirPassword() {
                 <input type="password" className="input pl-9" value={pass2} onChange={(e) => setPass2(e.target.value)} required />
               </div>
             </div>
-            <button className="btn-primary w-full" disabled={busy}>
-              {busy ? t('common.loading') : <><KeyRound size={16} /> {t('firstLogin.action')}</>}
-            </button>
+            <Button type="submit" variant="primary" className="w-full" loading={busy} icon={KeyRound}>
+              {busy ? t('common.saving') : t('firstLogin.action')}
+            </Button>
           </form>
         </div>
 

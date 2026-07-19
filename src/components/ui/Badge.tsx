@@ -12,6 +12,7 @@ const estadoColors: Record<EstadoAsignacion, string> = {
 const fisicoColors: Record<EstadoFisico, string> = {
   BUENO: 'bg-success/15 text-emerald-700 dark:text-success',
   REGULAR: 'bg-warning/15 text-amber-600 dark:text-warning',
+  CON_FALLA: 'bg-magenta-500/15 text-magenta-600 dark:text-magenta-300',
   DANADO: 'bg-danger/15 text-red-600 dark:text-danger',
   DE_BAJA: 'bg-ink-300/20 text-ink-500 dark:text-ink-300',
 };

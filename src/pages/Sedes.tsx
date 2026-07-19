@@ -5,12 +5,14 @@ import { MapPin, Plus, Globe, Trash2, Building2 } from 'lucide-react';
 import { listPaises, createPais, deletePais, listSedes, createSede, deleteSede } from '@/lib/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select } from '@/components/ui/Select';
+import { EmptyState } from '@/components/ui/EmptyState';
+import { SkeletonList } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 
 export function Sedes() {
   const { t } = useTranslation();
-  const { data: paises = [], refetch: refetchP } = useQuery({ queryKey: ['paises'], queryFn: listPaises });
-  const { data: sedes = [], refetch: refetchS } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
+  const { data: paises = [], refetch: refetchP, isLoading: loadingP } = useQuery({ queryKey: ['paises'], queryFn: listPaises });
+  const { data: sedes = [], refetch: refetchS, isLoading: loadingS } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
 
   const [nuevoPais, setNuevoPais] = useState('');
   const [codigoPais, setCodigoPais] = useState('');
@@ -50,9 +52,12 @@ export function Sedes() {
               onChange={(e) => setCodigoPais(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addPais()} />
             <button onClick={addPais} className="btn-primary !px-3"><Plus size={16} /></button>
           </div>
+          {loadingP && <SkeletonList count={3} />}
+          {!loadingP && paises.length === 0 && (
+            <EmptyState icon={Globe} title={t('sedes.noCountries')} description={t('sedes.noCountriesDesc')} className="!py-6" />
+          )}
           <div className="space-y-2">
-            {paises.length === 0 && <p className="text-sm text-ink-400 py-4 text-center">{t('sedes.noCountries')}</p>}
-            {paises.map((p) => (
+            {!loadingP && paises.map((p) => (
               <div key={p.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-ink-50 dark:bg-white/5">
                 <Globe size={15} className="text-ink-400" />
                 <span className="flex-1 text-sm font-medium">{p.nombre}{p.codigo && <span className="text-ink-400 font-normal"> · {p.codigo}</span>}</span>
@@ -73,9 +78,12 @@ export function Sedes() {
               <button onClick={addSede} className="btn-primary !px-3 shrink-0"><Plus size={16} /></button>
             </div>
           </div>
+          {loadingS && <SkeletonList count={3} />}
+          {!loadingS && sedes.length === 0 && (
+            <EmptyState icon={Building2} title={t('sedes.noCities')} description={t('sedes.noCitiesDesc')} className="!py-6" />
+          )}
           <div className="space-y-2">
-            {sedes.length === 0 && <p className="text-sm text-ink-400 py-4 text-center">{t('sedes.noCities')}</p>}
-            {sedes.map((s) => (
+            {!loadingS && sedes.map((s) => (
               <div key={s.id} className="flex items-center gap-2 p-2.5 rounded-xl bg-ink-50 dark:bg-white/5">
                 <MapPin size={15} className="text-ink-400" />
                 <span className="flex-1 text-sm font-medium">{s.nombre}

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Settings, Sun, Moon, Monitor, Languages, Database, Server, IdCard, FileSignature, Check, KeyRound, Upload } from 'lucide-react';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SignaturePad, type SignatureHandle } from '@/components/ui/SignaturePad';
+import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
@@ -99,9 +100,9 @@ export function Ajustes() {
             </div>
           </div>
           <div className="flex justify-end">
-            <button className="btn-secondary" disabled={savingData} onClick={guardarDatos}>
-              {savingData ? t('common.loading') : <><Check size={16} /> {t('settings.saveProfile')}</>}
-            </button>
+            <Button loading={savingData} icon={Check} onClick={guardarDatos}>
+              {savingData ? t('common.saving') : t('settings.saveProfile')}
+            </Button>
           </div>
 
           <div className="pt-5 mt-1 border-t border-ink-100 dark:border-white/5">
@@ -152,9 +153,9 @@ export function Ajustes() {
             <SignaturePad ref={sigRef} />
 
             <div className="flex justify-end mt-4">
-              <button className="btn-primary" disabled={savingSig} onClick={guardarFirma}>
-                {savingSig ? t('common.loading') : <><FileSignature size={16} /> {t('settings.saveSignature')}</>}
-              </button>
+              <Button variant="primary" loading={savingSig} icon={FileSignature} onClick={guardarFirma}>
+                {savingSig ? t('common.saving') : t('settings.saveSignature')}
+              </Button>
             </div>
           </div>
         </div>
@@ -173,9 +174,9 @@ export function Ajustes() {
             </div>
           </div>
           <div className="flex justify-end mt-3">
-            <button className="btn-secondary" disabled={savingPass} onClick={cambiarPass}>
-              {savingPass ? t('common.loading') : <><KeyRound size={16} /> {t('settings.changePassword')}</>}
-            </button>
+            <Button loading={savingPass} icon={KeyRound} onClick={cambiarPass}>
+              {savingPass ? t('common.saving') : t('settings.changePassword')}
+            </Button>
           </div>
         </div>
 

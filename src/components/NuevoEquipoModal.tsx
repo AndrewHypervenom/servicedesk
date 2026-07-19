@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { createEquipo, updateEquipo, listSedes, listMarcas, listProveedores } from '@/lib/api';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
+import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { useApp } from '@/store/useApp';
 import type { Equipo } from '@/types';
 
 const TIPOS = ['PORTATIL', 'ESCRITORIO', 'CELULAR', 'MONITOR', 'PERIFERICO', 'BASE_RECALENTAMIENTO', 'CARGADOR', 'OTRO'];
-const FISICOS = ['BUENO', 'REGULAR', 'DANADO'];
+const FISICOS = ['BUENO', 'REGULAR', 'CON_FALLA', 'DANADO'];
 const PROPIEDADES = ['EMPRESA', 'PROYECTO', 'RENTADO', 'COMODATO'];
 
 // Definido fuera del componente: si estuviera dentro, React lo remontaría
@@ -49,8 +50,8 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
   const sedeFija = perfil?.rol === 'JEFE_SEDE' || perfil?.rol === 'TECNICO';
   const editando = !!equipo;
   const [f, setF] = useState<Partial<Equipo>>({});
-  const [busy, setBusy] = useState(false);
   const set = (k: keyof Equipo, v: any) => setF((s) => ({ ...s, [k]: v }));
+  const qc = useQueryClient();
 
   // Reinicia el formulario cada vez que se abre: con los datos del equipo (editar) o vacío (crear).
   useEffect(() => {
@@ -60,22 +61,44 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
       : { tipo: 'PORTATIL', estado_fisico: 'BUENO', propiedad: 'EMPRESA', sede_id: sedeFija ? perfil?.sede_id : null });
   }, [open, equipo]);
 
-  const save = async () => {
+  const guardar = useMutation({
+    mutationFn: async () => {
+      if (!editando) return createEquipo(f);
+      const patch: Partial<Equipo> = {};
+      for (const k of EDITABLES) if (f[k] !== undefined) (patch as any)[k] = f[k];
+      return updateEquipo(equipo!.id, patch);
+    },
+
+    // Solo la edición se pinta de forma optimista: al crear no tenemos el id
+    // que asigna el servidor, y una fila fantasma sin id rompe los enlaces.
+    onMutate: async () => {
+      if (!editando) return {};
+      await qc.cancelQueries({ queryKey: ['equipos'] });
+      const prev = qc.getQueryData<Equipo[]>(['equipos']);
+      qc.setQueryData<Equipo[]>(['equipos'], (old) =>
+        old?.map((e) => (e.id === equipo!.id ? { ...e, ...f } : e)));
+      return { prev };
+    },
+
+    onError: (e: any, _v, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['equipos'], ctx.prev);
+      toast.error(e?.message ?? t('common.error'));
+    },
+
+    onSuccess: () => {
+      toast.success(editando ? t('form.updated') : t('form.saved'));
+      onSaved();
+      onClose();
+    },
+
+    // Siempre revalida contra el servidor: el patch optimista no incluye los
+    // campos que calcula la base (codigo_qr, timestamps).
+    onSettled: () => qc.invalidateQueries({ queryKey: ['equipos'] }),
+  });
+
+  const save = () => {
     if (!f.marca || !f.linea_modelo || !f.serial) { toast.error(t('form.requiredFields')); return; }
-    setBusy(true);
-    try {
-      if (editando) {
-        const patch: Partial<Equipo> = {};
-        for (const k of EDITABLES) if (f[k] !== undefined) (patch as any)[k] = f[k];
-        await updateEquipo(equipo!.id, patch);
-        toast.success(t('form.updated'));
-      } else {
-        await createEquipo(f);
-        toast.success(t('form.saved'));
-      }
-      onSaved(); onClose();
-    } catch (e: any) { toast.error(e.message ?? t('common.error')); }
-    finally { setBusy(false); }
+    guardar.mutate();
   };
 
   return (
@@ -141,8 +164,10 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
       </div>
 
       <div className="flex justify-end gap-2 mt-6 pt-4 border-t border-ink-100 dark:border-white/10">
-        <button onClick={onClose} className="btn-secondary">{t('common.cancel')}</button>
-        <button onClick={save} disabled={busy} className="btn-primary">{busy ? t('common.loading') : t('common.save')}</button>
+        <Button onClick={onClose} disabled={guardar.isPending}>{t('common.cancel')}</Button>
+        <Button variant="primary" onClick={save} loading={guardar.isPending}>
+          {guardar.isPending ? t('common.saving') : t('common.save')}
+        </Button>
       </div>
     </Modal>
   );
