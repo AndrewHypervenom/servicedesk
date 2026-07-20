@@ -258,6 +258,38 @@ export async function crearUsuario(p: {
   return { email: data.email, password: data.password };
 }
 
+/**
+ * Edita los datos de un usuario. Solo ADMIN (lo exige la RLS de `perfiles`).
+ *
+ * El correo no está entre los campos editables a propósito: es la credencial de
+ * acceso y vive en `auth.users`. Cambiarlo solo aquí dejaría al usuario
+ * entrando con el correo antiguo mientras la aplicación muestra el nuevo.
+ */
+export async function actualizarPerfil(id: string, patch: {
+  nombre?: string; cedula?: string | null; cargo?: string | null;
+  rol?: RolUsuario; sede_id?: string | null; activo?: boolean;
+}): Promise<void> {
+  const { error } = await supabase.from('perfiles').update(patch).eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * Elimina un usuario de `perfiles` y de Auth.
+ *
+ * Pasa por una Edge Function porque `auth.users` solo se toca con la
+ * service_role key. Devuelve error legible si el usuario tiene historial, si es
+ * el último administrador activo o si es uno mismo.
+ */
+export async function eliminarUsuario(id: string): Promise<void> {
+  const { data, error } = await supabase.functions.invoke('eliminar-usuario', { body: { id } });
+  if (error) {
+    let msg = error.message;
+    try { const ctx = await (error as any).context?.json(); if (ctx?.error) msg = ctx.error; } catch { /* noop */ }
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+}
+
 // ═══ Borrado suave y solicitudes ═════════════════════════════════════════
 // Las reglas de quién puede hacer qué viven en RLS y en los triggers de
 // `sql/01-borrado-suave.sql`. Lo de aquí es la llamada, no el permiso: si el

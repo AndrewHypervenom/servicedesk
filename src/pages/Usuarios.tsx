@@ -1,8 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { ShieldCheck, UserPlus, Copy, Check, Pencil } from 'lucide-react';
-import { listPerfiles, updateRol, updateSedeUsuario, crearUsuario, listSedes, listSedesPorPerfil, setSedesDePerfil } from '@/lib/api';
+import { ShieldCheck, UserPlus, Copy, Check, Pencil, Trash2, AlertTriangle, UserX } from 'lucide-react';
+import {
+  listPerfiles, updateRol, updateSedeUsuario, crearUsuario, listSedes,
+  listSedesPorPerfil, setSedesDePerfil, actualizarPerfil, eliminarUsuario,
+} from '@/lib/api';
+import { esAdmin } from '@/lib/roles';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select, type SelectOption } from '@/components/ui/Select';
 import { Modal } from '@/components/ui/Modal';
@@ -34,6 +38,9 @@ export function Usuarios() {
     queryKey: ['perfil-sedes'], queryFn: listSedesPorPerfil,
   });
   const [nuevo, setNuevo] = useState(false);
+  const [editando, setEditando] = useState<Perfil | null>(null);
+  const { perfil: yo } = useApp();
+  const soyAdmin = esAdmin(yo?.rol);
 
   const recargar = () => { refetch(); refetchSedes(); };
 
@@ -47,6 +54,8 @@ export function Usuarios() {
         action={<Button variant="primary" icon={UserPlus} onClick={() => setNuevo(true)}>{t('users.newUser')}</Button>} />
 
       <NuevoUsuarioModal open={nuevo} onClose={() => setNuevo(false)} onSaved={refetch} sedes={sedes} />
+      <EditarUsuarioModal perfil={editando} sedes={sedes}
+        onClose={() => setEditando(null)} onSaved={recargar} />
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         {ROLES.map((r) => (
@@ -62,16 +71,30 @@ export function Usuarios() {
           <thead>
             <tr className="text-left text-xs uppercase text-ink-400 border-b border-ink-100 dark:border-white/5">
               <th className="px-5 py-3">{t('auth.name')}</th><th className="px-4 py-3">{t('auth.email')}</th><th className="px-4 py-3">{t('users.role')}</th><th className="px-4 py-3">{t('users.sede')}</th>
+              {soyAdmin && <th className="px-4 py-3 text-right">Acciones</th>}
             </tr>
           </thead>
           <tbody>
             {isLoading && <SkeletonRows rows={5} cols={4} />}
             {!isLoading && perfiles.map((p) => (
-              <tr key={p.id} className="border-b border-ink-50 dark:border-white/5">
+              <tr key={p.id} className={`border-b border-ink-50 dark:border-white/5 ${p.activo ? '' : 'opacity-55'}`}>
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center text-xs font-bold">{initials(p.nombre)}</div>
-                    {p.nombre}
+                    <div className={`w-8 h-8 rounded-full grid place-items-center text-xs font-bold text-white ${
+                      p.activo ? 'bg-gradient-to-br from-brand-400 to-brand-600' : 'bg-ink-300 dark:bg-ink-600'}`}>
+                      {initials(p.nombre)}
+                    </div>
+                    <span>{p.nombre}</span>
+                    {/* El estado se dice con texto, no solo con el color apagado
+                        de la fila: un matiz de opacidad no es una etiqueta. */}
+                    {!p.activo && (
+                      <span className="badge bg-ink-200 dark:bg-white/10 text-ink-500">
+                        <UserX size={11} /> Desactivado
+                      </span>
+                    )}
+                    {p.id === yo?.id && (
+                      <span className="badge bg-brand-500/15 text-brand-600 dark:text-brand-300">Tú</span>
+                    )}
                   </div>
                 </td>
                 <td className="px-4 py-3 text-ink-500">{p.correo}</td>
@@ -88,6 +111,13 @@ export function Usuarios() {
                     ? <SedesUsuario perfil={p} sedes={sedes} asignadas={sedesPorPerfil[p.id] ?? []} onSaved={recargar} />
                     : <span className="text-ink-300">{t('users.todasLasSedes')}</span>}
                 </td>
+                {soyAdmin && (
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <button onClick={() => setEditando(p)} title="Editar usuario"
+                      className="btn-ghost !p-1.5"><Pencil size={15} /></button>
+                    <BorrarUsuario perfil={p} esYo={p.id === yo?.id} onDone={recargar} />
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -102,6 +132,196 @@ export function Usuarios() {
         )}
       </div>
     </div>
+  );
+}
+
+/** Edición completa de un usuario por el administrador. */
+function EditarUsuarioModal({ perfil, sedes, onClose, onSaved }:
+  { perfil: Perfil | null; sedes: Sede[]; onClose: () => void; onSaved: () => void }) {
+  const { t } = useTranslation();
+  const { perfil: yo } = useApp();
+  const [f, setF] = useState({ nombre: '', cedula: '', cargo: '', rol: 'TECNICO' as RolUsuario, sedeId: '', activo: true });
+  const [busy, setBusy] = useState(false);
+  const [cargado, setCargado] = useState<string | null>(null);
+
+  // Se siembra el formulario cuando cambia el usuario que se está editando, sin
+  // useEffect: comparar el id contra el último cargado evita un render extra.
+  if (perfil && cargado !== perfil.id) {
+    setCargado(perfil.id);
+    setF({
+      nombre: perfil.nombre ?? '', cedula: perfil.cedula ?? '', cargo: perfil.cargo ?? '',
+      rol: perfil.rol, sedeId: perfil.sede_id ?? '', activo: perfil.activo,
+    });
+  }
+
+  const esYo = perfil?.id === yo?.id;
+  const set = (k: keyof typeof f, v: string | boolean) => setF((s) => ({ ...s, [k]: v }));
+
+  const guardar = async () => {
+    if (!f.nombre.trim()) { toast.error(t('form.requiredFields')); return; }
+    if (rolPorSede(f.rol) && !f.sedeId) { toast.error(t('users.sedeRequired')); return; }
+    setBusy(true);
+    try {
+      await actualizarPerfil(perfil!.id, {
+        nombre: f.nombre.trim(),
+        cedula: f.cedula.trim() || null,
+        cargo: f.cargo.trim() || null,
+        rol: f.rol,
+        sede_id: rolPorSede(f.rol) ? f.sedeId : null,
+        activo: f.activo,
+      });
+      toast.success(t('common.success'));
+      onSaved(); onClose();
+    } catch (e: any) {
+      // Los triggers de la base rechazan degradarse o desactivarse a uno mismo
+      // y dejar el sistema sin administradores. El mensaje viene de allí.
+      toast.error(e?.message ?? t('common.error'));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <Modal open={!!perfil} onClose={() => !busy && onClose()}
+      title="Editar usuario" subtitle={perfil?.correo ?? undefined}>
+      <div className="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label className="label">{t('auth.name')} *</label>
+          <input className="input" value={f.nombre} onChange={(e) => set('nombre', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">C.C.</label>
+          <input className="input" value={f.cedula} onChange={(e) => set('cedula', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Cargo</label>
+          <input className="input" value={f.cargo} onChange={(e) => set('cargo', e.target.value)} />
+        </div>
+        <div>
+          <label className="label">{t('users.role')}</label>
+          <Select value={f.rol} onChange={(v) => set('rol', v)}
+            options={ROLES.map((r) => ({ value: r, label: t(`rol.${r}`), description: t(`rolDesc.${r}`) }))} />
+        </div>
+        {rolPorSede(f.rol) && (
+          <div className="sm:col-span-2">
+            <label className="label">{t('users.sede')} *</label>
+            <Select value={f.sedeId} onChange={(v) => set('sedeId', v)}
+              placeholder={t('users.selectSede')} options={sedes.map(sedeOption)} />
+          </div>
+        )}
+
+        <div className="sm:col-span-2">
+          <label className="label">Correo</label>
+          <div className="input bg-ink-50 dark:bg-white/5 text-ink-400 truncate">{perfil?.correo}</div>
+          {/* Se explica por qué no es editable en vez de dejar el campo gris sin
+              más: si no, parece un fallo de la pantalla. */}
+          <p className="text-[11px] text-ink-400 mt-1 leading-snug">
+            El correo es la credencial de acceso y no se cambia desde aquí.
+            Modificarlo solo en el perfil dejaría al usuario entrando con el anterior.
+          </p>
+        </div>
+
+        <div className="sm:col-span-2">
+          <button type="button" onClick={() => !esYo && set('activo', !f.activo)} disabled={esYo}
+            className={`w-full text-left p-3 rounded-xl border transition-all flex items-center gap-3 ${
+              esYo ? 'opacity-50 cursor-not-allowed border-ink-100 dark:border-white/10'
+                   : f.activo ? 'border-ink-100 dark:border-white/10 hover:bg-ink-50 dark:hover:bg-white/5'
+                              : 'border-warning/40 bg-warning/10'}`}>
+            <div className={`w-5 h-5 rounded-md grid place-items-center shrink-0 border ${
+              f.activo ? 'bg-brand-500 border-brand-500 text-white' : 'border-ink-300 dark:border-white/20'}`}>
+              {f.activo && <Check size={13} />}
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-medium">Cuenta activa</div>
+              <div className="text-xs text-ink-400 leading-snug">
+                {esYo ? 'No puede desactivar su propia cuenta.'
+                      : f.activo ? 'Al desactivarla pierde el acceso de inmediato, y es reversible.'
+                                 : 'Desactivado: no podrá iniciar sesión ni consultar datos.'}
+              </div>
+            </div>
+          </button>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-2 mt-6">
+        <Button disabled={busy} onClick={onClose}>{t('common.cancel')}</Button>
+        <Button variant="primary" loading={busy} onClick={guardar}>
+          {busy ? t('common.saving') : t('common.save')}
+        </Button>
+      </div>
+    </Modal>
+  );
+}
+
+/** Eliminación definitiva de un usuario, con desactivar como alternativa. */
+function BorrarUsuario({ perfil, esYo, onDone }:
+  { perfil: Perfil; esYo: boolean; onDone: () => void }) {
+  const [abierto, setAbierto] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  // La propia cuenta no se ofrece siquiera. La base también lo impide, pero
+  // pintar un botón que siempre falla no ayuda a nadie.
+  if (esYo) return null;
+
+  const eliminar = async () => {
+    setBusy(true);
+    try {
+      await eliminarUsuario(perfil.id);
+      toast.success(`${perfil.nombre} eliminado`);
+      setAbierto(false); onDone();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'No se pudo eliminar');
+    } finally { setBusy(false); }
+  };
+
+  const desactivar = async () => {
+    setBusy(true);
+    try {
+      await actualizarPerfil(perfil.id, { activo: false });
+      toast.success(`${perfil.nombre} desactivado`);
+      setAbierto(false); onDone();
+    } catch (e: any) {
+      toast.error(e?.message ?? 'No se pudo desactivar');
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <button onClick={() => setAbierto(true)} title="Eliminar usuario"
+        className="btn-ghost !p-1.5 text-danger"><Trash2 size={15} /></button>
+
+      <Modal open={abierto} onClose={() => !busy && setAbierto(false)} size="sm"
+        title="Eliminar usuario" subtitle={perfil.nombre}>
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-3 rounded-xl bg-danger/10 border border-danger/25">
+            <AlertTriangle size={18} className="text-danger shrink-0 mt-0.5" />
+            <div className="text-sm leading-snug">
+              Eliminar borra su cuenta de acceso y su perfil de forma
+              <strong> irreversible</strong>. Si generó actas o dejó rastro en
+              auditoría, la base lo impedirá y tendrá que desactivarlo.
+            </div>
+          </div>
+
+          {perfil.activo && (
+            <p className="text-sm text-ink-500 dark:text-ink-300 leading-snug">
+              <strong>Desactivar</strong> es casi siempre la opción correcta:
+              le quita el acceso al instante, conserva su historial y se puede
+              revertir.
+            </p>
+          )}
+
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button disabled={busy} onClick={() => setAbierto(false)}>Cancelar</Button>
+            {perfil.activo && (
+              <button onClick={desactivar} disabled={busy} className="btn-secondary">
+                <UserX size={15} /> Desactivar
+              </button>
+            )}
+            <button onClick={eliminar} disabled={busy} className="btn-danger">
+              <Trash2 size={15} /> Eliminar definitivamente
+            </button>
+          </div>
+        </div>
+      </Modal>
+    </>
   );
 }
 
