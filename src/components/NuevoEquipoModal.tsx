@@ -123,7 +123,24 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
         </div>
         <Field label={t('equipo.modelo')} k="linea_modelo" f={f} set={set} req />
         <div className="sm:col-span-2"><Field label={t('equipo.descripcion')} k="descripcion_completa" f={f} set={set} /></div>
-        <Field label={t('equipo.serial')} k="serial" f={f} set={set} req />
+        <div>
+          <label className="label">{t('equipo.serial')}<span className="text-danger"> *</span></label>
+          <div className="flex gap-2">
+            <input
+              className="input flex-1"
+              value={f.serial ?? ''}
+              onChange={(e) => set('serial', e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => set('serial', 'N/A')}
+              className="shrink-0 rounded-lg border border-ink-200 dark:border-white/15 px-3 text-sm font-medium text-ink-600 dark:text-ink-300 hover:bg-ink-50 dark:hover:bg-white/5"
+              title={t('form.serialNAHint')}
+            >
+              N/A
+            </button>
+          </div>
+        </div>
         <div>
           <label className="label">{t('equipo.tipo')}</label>
           <Select

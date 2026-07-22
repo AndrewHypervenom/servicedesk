@@ -348,7 +348,8 @@
     "saved": "Equipamento registrado com sucesso",
     "updated": "Equipamento atualizado com sucesso",
     "requiredFields": "Preencha os campos obrigatórios",
-    "pickOrType": "Escolha um ou digite um novo"
+    "pickOrType": "Escolha um ou digite um novo",
+    "serialNAHint": "Marcar como N/A quando o equipamento não tem número de série"
   },
   "assign": {
     "title": "Atribuir equipamento a colaborador",
