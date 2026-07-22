@@ -7,18 +7,30 @@ import {
 import { Modal } from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toast';
 import { listSedes } from '@/lib/api';
-import { analizarLibro } from '@/lib/importador/analizar';
+import { analizarLibro, detectarHojas, estadoCedulas } from '@/lib/importador/analizar';
 import { aplicarImportacion } from '@/lib/importador/aplicar';
+import { HOJAS } from '@/lib/importador/campos';
 import { normCedula, normNombre } from '@/lib/importador/normalizar';
 import type {
-  ProgresoAplicacion, Resoluciones, ResultadoAnalisis, ResultadoAplicacion,
+  Mapeo, ProgresoAplicacion, Resoluciones, ResultadoAnalisis, ResultadoAplicacion,
 } from '@/lib/importador/tipos';
 import { AnalisisVisual, duracionAnimacion } from './AnalisisVisual';
+import { PanelMapeo } from './PanelMapeo';
 import { PanelRevision } from './PanelRevision';
 
-type Paso = 'archivo' | 'analizando' | 'revision' | 'aplicando' | 'listo';
+type Paso = 'archivo' | 'mapeo' | 'analizando' | 'revision' | 'aplicando' | 'listo';
 
-const RES_INICIAL: Resoluciones = { cedulas: {}, conflictos: {}, sedeId: null };
+const RES_INICIAL: Resoluciones = { cedulas: {}, conflictos: {}, sedes: {}, sedeDefecto: null };
+
+/** ¿El mapeo asigna la columna obligatoria de cada hoja que trae datos? */
+function mapeoCompleto(mapeo: Mapeo | null): boolean {
+  if (!mapeo) return false;
+  return HOJAS.every((h) => {
+    const m = mapeo[h.id];
+    if (!m || m.filas === 0) return true;
+    return h.campos.filter((c) => c.obligatorio).every((c) => !!m.campos[c.id]);
+  });
+}
 
 const ETAPA_TEXTO: Record<ProgresoAplicacion['etapa'], string> = {
   preparando: 'Preparando los datos',
@@ -50,6 +62,8 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
 
   const [paso, setPaso] = useState<Paso>('archivo');
+  const [archivo, setArchivo] = useState<File | null>(null);
+  const [mapeo, setMapeo] = useState<Mapeo | null>(null);
   const [analisis, setAnalisis] = useState<ResultadoAnalisis | null>(null);
   const [nombreArchivo, setNombreArchivo] = useState('');
   const [res, setRes] = useState<Resoluciones>(RES_INICIAL);
@@ -60,6 +74,8 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
 
   const reiniciar = useCallback(() => {
     setPaso('archivo');
+    setArchivo(null);
+    setMapeo(null);
     setAnalisis(null);
     setNombreArchivo('');
     setRes(RES_INICIAL);
@@ -80,48 +96,82 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
       return;
     }
     setNombreArchivo(file.name);
-    setPaso('analizando');
+    setArchivo(file);
     try {
-      // El análisis es casi instantáneo; se le da tiempo a la animación para que
-      // el usuario alcance a ver qué se revisó.
-      const [r] = await Promise.all([
-        analizarLibro(file),
-        new Promise((ok) => setTimeout(ok, duracionAnimacion())),
-      ]);
-      setAnalisis(r);
-      // Si la ubicación del archivo coincide con una sede ("BOGOTA" → "Bogotá"),
-      // se preselecciona; con una sola sede tampoco hay nada que preguntar.
-      const ubicaciones = r.ubicaciones.map(normNombre);
-      const coinciden = sedes.filter((s) => ubicaciones.includes(normNombre(s.nombre)));
-      setRes({
-        ...RES_INICIAL,
-        sedeId: sedes.length === 1 ? sedes[0].id : coinciden.length === 1 ? coinciden[0].id : null,
-      });
-      setPaso('revision');
+      // Primera pasada rápida: detectar hojas y columnas para proponer el mapeo.
+      const m = await detectarHojas(file);
+      if (!Object.keys(m).length) {
+        toast.error('No encontramos hojas reconocibles (BD_EQUIPOS, ENTRADAS, SALIDAS o CLARO).');
+        setArchivo(null);
+        return;
+      }
+      setMapeo(m);
+      setPaso('mapeo');
     } catch (e) {
       toast.error(`No se pudo leer el archivo: ${(e as Error).message}`);
       setPaso('archivo');
     }
   };
 
-  const faltanCedulas = !!analisis?.pendientesCedula.some(
-    (p) => normCedula(res.cedulas[p.nombre] ?? '') === null,
-  );
+  /** Con el mapeo confirmado, corre el análisis completo y pasa a la revisión. */
+  const analizarConMapeo = async () => {
+    if (!archivo || !mapeo || !mapeoCompleto(mapeo)) return;
+    setPaso('analizando');
+    try {
+      // El análisis es casi instantáneo; se le da tiempo a la animación para que
+      // el usuario alcance a ver qué se revisó.
+      const [r] = await Promise.all([
+        analizarLibro(archivo, mapeo),
+        new Promise((ok) => setTimeout(ok, duracionAnimacion())),
+      ]);
+      setAnalisis(r);
+      // Preselección de sede: con una sola sede, todo va ahí; si la ubicación del
+      // archivo coincide por nombre con una sede ("BOGOTA" → "Bogotá"), se auto-mapea.
+      const auto: Record<string, string> = {};
+      for (const u of r.ubicaciones) {
+        if (sedes.length === 1) auto[normNombre(u)] = sedes[0].id;
+        else {
+          const m = sedes.find((s) => normNombre(s.nombre) === normNombre(u));
+          if (m) auto[normNombre(u)] = m.id;
+        }
+      }
+      const defecto = sedes.length === 1
+        ? sedes[0].id
+        : (r.ubicaciones.length === 1 && r.ubicaciones[0] && auto[normNombre(r.ubicaciones[0])]) || null;
+      setRes({ ...RES_INICIAL, sedes: auto, sedeDefecto: defecto });
+      setPaso('revision');
+    } catch (e) {
+      toast.error(`No se pudo analizar el archivo: ${(e as Error).message}`);
+      setPaso('mapeo');
+    }
+  };
+
+  // Bloquea si alguna cédula falta, es inválida o está repetida entre personas.
+  const faltanCedulas = !!analisis
+    && estadoCedulas(analisis, res.cedulas).listas < analisis.pendientesCedula.length;
   const faltanConflictos = !!analisis?.conflictos.some((c) => res.conflictos[c.serial] === undefined);
-  const listoParaAplicar = !!analisis && !!res.sedeId && !faltanCedulas && !faltanConflictos;
+  // Con una sola ubicación basta la sede por defecto; con varias, todas mapeadas + la de defecto.
+  const multiSede = !!analisis && analisis.ubicaciones.length > 1;
+  const sedeOk = !!analisis && (multiSede
+    ? analisis.ubicaciones.every((u) => !!res.sedes[normNombre(u)]) && !!res.sedeDefecto
+    : !!res.sedeDefecto);
+  const listoParaAplicar = !!analisis && sedeOk && !faltanCedulas && !faltanConflictos;
 
   /** Lo que el usuario aún debe resolver, como pasos que se van tachando.
    *  Cada uno lleva al bloque donde se resuelve, para no obligar a buscarlo. */
   const requisitos = useMemo(() => {
     if (!analisis) return [];
-    const cedulasListas = analisis.pendientesCedula.filter(
-      (p) => normCedula(res.cedulas[p.nombre] ?? '') !== null,
-    ).length;
+    const cedulasListas = estadoCedulas(analisis, res.cedulas).listas;
     const conflictosListos = analisis.conflictos.filter(
       (c) => res.conflictos[c.serial] !== undefined,
     ).length;
+    const sedesMapeadas = analisis.ubicaciones.filter((u) => !!res.sedes[normNombre(u)]).length;
     return [
-      { id: 'imp-sede', label: 'Sede destino', listo: !!res.sedeId },
+      {
+        id: 'imp-sede',
+        label: multiSede ? `Sedes ${sedesMapeadas}/${analisis.ubicaciones.length}` : 'Sede destino',
+        listo: sedeOk,
+      },
       analisis.pendientesCedula.length > 0 && {
         id: 'imp-cedulas',
         label: `Cédulas ${cedulasListas}/${analisis.pendientesCedula.length}`,
@@ -175,6 +225,7 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
 
   const titulos: Record<Paso, { t: string; s: string }> = {
     archivo: { t: 'Importar desde Excel', s: 'Carga la base de equipos y el sistema la analiza hoja por hoja' },
+    mapeo: { t: 'Mapeo de columnas', s: nombreArchivo || 'Confirma a qué campo va cada columna' },
     analizando: { t: 'Analizando el archivo', s: 'Leyendo cada hoja y cruzando los datos' },
     revision: { t: 'Revisión antes de importar', s: analisis?.archivo ?? '' },
     aplicando: { t: 'Importando', s: 'No cierres esta ventana' },
@@ -238,10 +289,34 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
               <FileSpreadsheet size={16} className="shrink-0 mt-0.5" />
               <p>
                 Se leen <strong className="text-ink-600 dark:text-ink-200">BD_EQUIPOS</strong> (inventario),{' '}
-                <strong className="text-ink-600 dark:text-ink-200">ENTRADAS</strong> (devoluciones y cédulas) y{' '}
-                <strong className="text-ink-600 dark:text-ink-200">SALIDAS</strong> (asignaciones).
-                Nada se guarda hasta que revises el resultado.
+                <strong className="text-ink-600 dark:text-ink-200">ENTRADAS</strong> (devoluciones y cédulas),{' '}
+                <strong className="text-ink-600 dark:text-ink-200">SALIDAS</strong> (asignaciones) y{' '}
+                <strong className="text-ink-600 dark:text-ink-200">CLARO</strong> (comodato). Podrás revisar
+                el mapeo de cada columna antes de importar; nada se guarda hasta que confirmes.
               </p>
+            </div>
+          </motion.div>
+        )}
+
+        {/* --------------------------------------------------------- mapeo */}
+        {paso === 'mapeo' && mapeo && (
+          <motion.div key="mapeo" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+            <PanelMapeo mapeo={mapeo} onMapeo={setMapeo} />
+
+            <div className="mt-6 pt-5 border-t border-ink-100 dark:border-white/5 flex flex-col sm:flex-row sm:items-center gap-3">
+              <p className="flex-1 text-xs text-ink-400">
+                {mapeoCompleto(mapeo)
+                  ? 'Mapeo listo. Al continuar analizamos y validamos cada fila.'
+                  : 'Asigna la columna del serial en cada hoja con datos para poder continuar.'}
+              </p>
+              <div className="flex gap-2">
+                <button onClick={reiniciar} className="btn-secondary">
+                  <RotateCcw size={15} /> Otro archivo
+                </button>
+                <button onClick={analizarConMapeo} disabled={!mapeoCompleto(mapeo)} className="btn-primary shine">
+                  Continuar <ArrowRight size={15} />
+                </button>
+              </div>
             </div>
           </motion.div>
         )}

@@ -4,7 +4,8 @@ import {
   AlertTriangle, Boxes, ChevronDown, Download, Info, ShieldAlert, Users, ArrowLeftRight, Check,
 } from 'lucide-react';
 import { Select } from '@/components/ui/Select';
-import { normCedula } from '@/lib/importador/normalizar';
+import { normNombre } from '@/lib/importador/normalizar';
+import { estadoCedulas } from '@/lib/importador/analizar';
 import type {
   ConflictoSerial, Incidencia, ResultadoAnalisis, Resoluciones, Severidad, TipoIncidencia,
 } from '@/lib/importador/tipos';
@@ -212,9 +213,21 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
     return [...m.values()];
   }, [advertencias, infos]);
 
-  const cedulasListas = analisis.pendientesCedula.filter(
-    (p) => normCedula(res.cedulas[p.nombre] ?? '') !== null,
-  ).length;
+  const opcionesSede = useMemo(
+    () => sedes.map((s) => ({
+      value: s.id,
+      label: s.pais_nombre ? `${s.nombre} · ${s.pais_nombre}` : s.nombre,
+    })),
+    [sedes],
+  );
+  // Solo se pregunta sede por sede cuando el archivo trae más de una ubicación.
+  const multiSede = analisis.ubicaciones.length > 1;
+  const sedesListas = analisis.ubicaciones.every((u) => !!res.sedes[normNombre(u)]) && !!res.sedeDefecto;
+
+  const { porNombre: estadoCed, listas: cedulasListas } = useMemo(
+    () => estadoCedulas(analisis, res.cedulas),
+    [analisis, res.cedulas],
+  );
 
   const setCedula = (nombre: string, valor: string) =>
     onRes({ ...res, cedulas: { ...res.cedulas, [nombre]: valor } });
@@ -255,24 +268,76 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
 
       {/* ------------------------------------------------------------- sede */}
       <div id="imp-sede" className="card p-4 scroll-mt-4">
-        <div className="flex items-center gap-2">
-          <label className="label !mb-0">Sede destino *</label>
-          {res.sedeId && <CheckPop size={14} />}
-        </div>
-        <p className="text-xs text-ink-400 mt-1 mb-2.5">
-          {analisis.ubicaciones.length
-            ? `El archivo dice «${analisis.ubicaciones.join(', ')}». Elige contra qué sede del sistema se registra.`
-            : 'El archivo no trae ubicación. Elige la sede destino.'}
-        </p>
-        <Select
-          value={res.sedeId ?? ''}
-          onChange={(v) => onRes({ ...res, sedeId: v || null })}
-          placeholder="Selecciona una sede"
-          options={sedes.map((s) => ({
-            value: s.id,
-            label: s.pais_nombre ? `${s.nombre} · ${s.pais_nombre}` : s.nombre,
-          }))}
-        />
+        {opcionesSede.length > 0 && (
+          multiSede ? (
+            /* Varias ubicaciones en el archivo: se mapea cada una contra una sede. */
+            <>
+              <div className="flex items-center gap-2">
+                <label className="label !mb-0">Sedes destino *</label>
+                {sedesListas && <CheckPop size={14} />}
+              </div>
+              <p className="text-xs text-ink-400 mt-1 mb-3">
+                El archivo trae varias ubicaciones. Indica a qué sede del sistema va cada una;
+                lo que no traiga ubicación se registra en la sede por defecto.
+              </p>
+              <div className="space-y-2.5">
+                {analisis.ubicaciones.map((u) => {
+                  const clave = normNombre(u);
+                  const val = res.sedes[clave] ?? '';
+                  return (
+                    <div key={u} className="flex flex-col sm:flex-row sm:items-center gap-2">
+                      <div className="sm:w-40 shrink-0 flex items-center gap-1.5">
+                        <span className="text-sm font-medium truncate">{u}</span>
+                        {val && <CheckPop size={13} />}
+                      </div>
+                      <div className="flex-1">
+                        <Select
+                          value={val}
+                          onChange={(v) => onRes({ ...res, sedes: { ...res.sedes, [clave]: v } })}
+                          placeholder="Elige la sede"
+                          options={opcionesSede}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2.5 border-t border-ink-50 dark:border-white/5">
+                  <div className="sm:w-40 shrink-0 flex items-center gap-1.5">
+                    <span className="text-sm text-ink-400 truncate">Por defecto</span>
+                    {res.sedeDefecto && <CheckPop size={13} />}
+                  </div>
+                  <div className="flex-1">
+                    <Select
+                      value={res.sedeDefecto ?? ''}
+                      onChange={(v) => onRes({ ...res, sedeDefecto: v || null })}
+                      placeholder="Sede para lo que no trae ubicación"
+                      options={opcionesSede}
+                    />
+                  </div>
+                </div>
+              </div>
+            </>
+          ) : (
+            /* Una sola ubicación (o ninguna): un único selector, como toda la vida. */
+            <>
+              <div className="flex items-center gap-2">
+                <label className="label !mb-0">Sede destino *</label>
+                {res.sedeDefecto && <CheckPop size={14} />}
+              </div>
+              <p className="text-xs text-ink-400 mt-1 mb-2.5">
+                {analisis.ubicaciones.length
+                  ? `El archivo dice «${analisis.ubicaciones[0]}». Elige contra qué sede del sistema se registra.`
+                  : 'El archivo no trae ubicación. Elige la sede destino.'}
+              </p>
+              <Select
+                value={res.sedeDefecto ?? ''}
+                onChange={(v) => onRes({ ...res, sedeDefecto: v || null })}
+                placeholder="Selecciona una sede"
+                options={opcionesSede}
+              />
+            </>
+          )
+        )}
         {!sedes.length && (
           <p className="text-xs text-danger mt-2">
             No hay sedes creadas. Crea la sede en Sedes antes de importar.
@@ -309,8 +374,9 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
             <div className="space-y-2.5">
               {analisis.pendientesCedula.map((p, i) => {
                 const valor = res.cedulas[p.nombre] ?? '';
-                const ok = normCedula(valor) !== null;
-                const escrito = valor.trim().length > 0;
+                const estado = estadoCed[p.nombre];
+                const ok = estado === 'ok';
+                const conError = estado === 'invalida' || estado === 'duplicada';
                 return (
                   <motion.div
                     key={p.nombre}
@@ -329,7 +395,7 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
                     <div className="sm:w-52 shrink-0">
                       <div className="relative">
                         <input
-                          className={`input pr-9 ${escrito && !ok ? '!border-danger focus:!ring-danger/40' : ''}`}
+                          className={`input pr-9 ${conError ? '!border-danger focus:!ring-danger/40' : ''}`}
                           placeholder="Cédula"
                           inputMode="numeric"
                           value={valor}
@@ -337,12 +403,14 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
                         />
                         {ok && <CheckPop className="absolute right-3 top-1/2 -translate-y-1/2" />}
                       </div>
-                      {escrito && !ok && (
+                      {conError && (
                         <motion.p
                           initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }}
                           className="text-[11px] text-danger mt-1"
                         >
-                          Solo números, entre 4 y 15 dígitos (los puntos se quitan solos).
+                          {estado === 'duplicada'
+                            ? 'Esta cédula ya se la asignaste a otra persona. Cada colaborador necesita una distinta.'
+                            : 'Solo números, entre 4 y 15 dígitos (los puntos se quitan solos).'}
                         </motion.p>
                       )}
                     </div>

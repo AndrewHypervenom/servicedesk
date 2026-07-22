@@ -1,4 +1,27 @@
-import type { EstadoAsignacion, EstadoFisico, TipoActivo, TipoMovimiento } from '@/types';
+import type { EstadoAsignacion, EstadoFisico, PropiedadActivo, TipoActivo, TipoMovimiento } from '@/types';
+import type { HojaId } from './campos';
+
+/** Cómo tratar una columna del Excel que ningún campo reclamó. */
+export type ModoExtra = 'IGNORAR' | 'OBSERVACIONES';
+
+/** El mapeo de una hoja: qué columna del Excel alimenta cada campo del sistema. */
+export interface MapeoHoja {
+  /** Nombre real de la hoja en el Excel (con tildes y espacios). */
+  hoja: string;
+  /** Encabezados detectados en la hoja. */
+  columnas: string[];
+  /** Primeros valores de cada columna, para orientar al usuario en el mapeo. */
+  muestras: Record<string, string[]>;
+  /** Filas con datos (sin contar el encabezado). */
+  filas: number;
+  /** campoId -> columna elegida (o null si el usuario lo dejó sin asignar). */
+  campos: Record<string, string | null>;
+  /** Columnas que ningún campo usa: se ignoran o van a observaciones. */
+  extras: Record<string, ModoExtra>;
+}
+
+/** El mapeo completo del libro, indexado por la hoja conocida a la que corresponde. */
+export type Mapeo = Partial<Record<HojaId, MapeoHoja>>;
 
 /** Qué tan grave es lo que encontró el análisis. */
 export type Severidad =
@@ -69,6 +92,12 @@ export interface EquipoImport {
   /** Nombre crudo del Excel; se convierte en cédula al aplicar. */
   usuarioNombre: string | null;
   ubicacion: string | null;
+  /** De quién es el equipo: EMPRESA (BD_EQUIPOS) o COMODATO del operador (CLARO). */
+  propiedad: PropiedadActivo;
+  /** Dueño externo cuando no es de la empresa (ej. "CLARO"). */
+  proveedor_propietario: string | null;
+  /** Hoja de la que salió el equipo, para el resumen y el trazo. */
+  origen: HojaId;
 }
 
 export interface ColaboradorImport {
@@ -119,8 +148,10 @@ export interface Resoluciones {
   cedulas: Record<string, string>;
   /** serial -> fila del Excel que gana. */
   conflictos: Record<string, number>;
-  /** Sede destino para todo lo importado. */
-  sedeId: string | null;
+  /** Ubicación normalizada del Excel -> sede del sistema a la que se manda. */
+  sedes: Record<string, string>;
+  /** Sede para lo que no trae ubicación (colaboradores y equipos sin sede). */
+  sedeDefecto: string | null;
 }
 
 /**

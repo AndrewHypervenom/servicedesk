@@ -22,6 +22,11 @@ export async function aplicarImportacion(
   onProgreso?.({ etapa: 'preparando' });
   const cedulaDe = indiceCedulas(analisis, res.cedulas);
 
+  // La sede de cada equipo sale del mapeo de su ubicación; lo que no trae ubicación
+  // (o cae en una ubicación sin mapear) va a la sede por defecto.
+  const sedeDe = (ubicacion: string | null): string | null =>
+    (ubicacion ? res.sedes[normNombre(ubicacion)] : null) ?? res.sedeDefecto;
+
   // --- personas: las de ENTRADAS más las que el usuario completó en la revisión
   const porCedula = new Map<string, { cedula: string; nombre: string }>();
   for (const c of analisis.colaboradores) porCedula.set(c.cedula, { cedula: c.cedula, nombre: c.nombre });
@@ -53,7 +58,9 @@ export async function aplicarImportacion(
           : e.estado_asignacion === 'ASIGNADO' ? 'DISPONIBLE'
             : e.estado_asignacion,
         cedula_asignado: quedaAsignado ? cedula : null,
-        propiedad: 'EMPRESA',
+        propiedad: e.propiedad,
+        proveedor_propietario: e.proveedor_propietario,
+        sede_id: sedeDe(e.ubicacion),
         observaciones: e.observaciones,
       };
     });
@@ -80,7 +87,7 @@ export async function aplicarImportacion(
 
   const { data, error } = await supabase.rpc('importar_base', {
     payload: {
-      sede_id: res.sedeId,
+      sede_defecto: res.sedeDefecto,
       colaboradores: [...porCedula.values()],
       equipos,
       movimientos,

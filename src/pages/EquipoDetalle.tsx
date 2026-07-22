@@ -78,14 +78,16 @@ export function EquipoDetalle() {
     [t('equipo.proyectoAsignado'), equipo.proyecto_asignado ?? '—'],
     [t('equipo.fichaTecnica'), equipo.ficha_tecnica ?? '—'],
   ];
-  if (equipo.propiedad === 'RENTADO') {
-    infoRows.push([t('equipo.numeroContrato'), equipo.numero_contrato ?? '—']);
-    infoRows.push([t('equipo.fechaVencimiento'),
-      <span>{fmtDate(equipo.fecha_vencimiento_contrato, i18n.language)}
-        {dias !== null && dias >= 0 && dias <= 30 && <Badge className="!bg-warning/15 !text-amber-600 dark:!text-warning ml-2">{dias}d</Badge>}
-      </span>]);
+  // Equipos que no son de la empresa (rentados o en comodato) muestran su contrato.
+  if (equipo.propiedad === 'RENTADO' || equipo.propiedad === 'COMODATO') {
+    if (equipo.numero_contrato) infoRows.push([t('equipo.numeroContrato'), equipo.numero_contrato]);
+    if (equipo.fecha_vencimiento_contrato) {
+      infoRows.push([t('equipo.fechaVencimiento'),
+        <span>{fmtDate(equipo.fecha_vencimiento_contrato, i18n.language)}
+          {dias !== null && dias >= 0 && dias <= 30 && <Badge className="!bg-warning/15 !text-amber-600 dark:!text-warning ml-2">{dias}d</Badge>}
+        </span>]);
+    }
   }
-
   return (
     <div>
       <button onClick={() => navigate(-1)} className="btn-ghost mb-4 !px-2"><ArrowLeft size={18} /> {t('common.back')}</button>
@@ -123,6 +125,21 @@ export function EquipoDetalle() {
                 </div>
               ))}
             </div>
+
+            {/* Comentarios técnicos: panel propio para que no se pierdan entre los datos. */}
+            {equipo.observaciones && (
+              <div className="mt-5 rounded-xl border border-warning/25 bg-warning/[0.07] p-4">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <FileText size={15} className="text-amber-600 dark:text-warning shrink-0" />
+                  <span className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-warning">
+                    {t('equipo.observaciones')}
+                  </span>
+                </div>
+                <p className="text-sm text-ink-700 dark:text-ink-100 whitespace-pre-wrap leading-relaxed">
+                  {equipo.observaciones}
+                </p>
+              </div>
+            )}
           </motion.div>
 
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="card p-6">
