@@ -102,7 +102,7 @@ function NuevoProveedorModal({ open, onClose, onSaved }: { open: boolean; onClos
     <Modal open={open} onClose={() => !busy && onClose()} title={t('suppliers.new')}>
       <div className="grid sm:grid-cols-2 gap-4">
         <div>
-          <label className="label">{t('suppliers.name')} *</label>
+          <label className="label req">{t('suppliers.name')}</label>
           <input className="input" value={f.nombre ?? ''} onChange={(e) => set('nombre', e.target.value)} />
         </div>
         <div>

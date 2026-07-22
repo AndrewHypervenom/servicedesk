@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { ShieldCheck, UserPlus, Copy, Check, Pencil, Trash2, AlertTriangle, UserX } from 'lucide-react';
 import {
-  listPerfiles, updateRol, updateSedeUsuario, crearUsuario, listSedes,
+  listPerfiles, updateRol, crearUsuario, listSedes,
   listSedesPorPerfil, setSedesDePerfil, actualizarPerfil, eliminarUsuario,
 } from '@/lib/api';
 import { esAdmin } from '@/lib/roles';
@@ -188,7 +188,7 @@ function EditarUsuarioModal({ perfil, sedes, onClose, onSaved }:
       title="Editar usuario" subtitle={perfil?.correo ?? undefined}>
       <div className="grid sm:grid-cols-2 gap-4">
         <div>
-          <label className="label">{t('auth.name')} *</label>
+          <label className="label req">{t('auth.name')}</label>
           <input className="input" value={f.nombre} onChange={(e) => set('nombre', e.target.value)} />
         </div>
         <div>
@@ -206,7 +206,7 @@ function EditarUsuarioModal({ perfil, sedes, onClose, onSaved }:
         </div>
         {rolPorSede(f.rol) && (
           <div className="sm:col-span-2">
-            <label className="label">{t('users.sede')} *</label>
+            <label className="label req">{t('users.sede')}</label>
             <Select value={f.sedeId} onChange={(v) => set('sedeId', v)}
               placeholder={t('users.selectSede')} options={sedes.map(sedeOption)} />
           </div>
@@ -330,51 +330,50 @@ function BorrarUsuario({ perfil, esYo, onDone }:
 }
 
 /**
- * Sedes de un usuario. Un Técnico o Líder de sede puede operar en varias. El
- * Administrador y el Jefe (LIDER) pueden cambiárselas: al guardar también se
- * ajusta `perfiles.sede_id`. La RLS de `perfiles` y `perfil_sedes` habilita la
- * escritura a ADMIN y LIDER (ver `supabase/rls-perfiles.sql`). Para los demás
- * las sedes se muestran en modo lectura.
+ * Sede de un usuario. Cada usuario opera en una sola sede (su ciudad). El
+ * Administrador y el Jefe (LIDER) pueden cambiársela: al guardar se ajusta
+ * `perfiles.sede_id` y la tabla `perfil_sedes` (siempre con una única fila) vía
+ * el RPC `set_sedes_de_perfil`, autorizado para ADMIN y LIDER. Para los demás
+ * la sede se muestra en modo lectura.
  */
 function SedesUsuario({ perfil, sedes, asignadas, onSaved }:
   { perfil: Perfil; sedes: Sede[]; asignadas: string[]; onSaved: () => void }) {
   const { t } = useTranslation();
   const { perfil: yoPerfil } = useApp();
   const [open, setOpen] = useState(false);
-  const [sel, setSel] = useState<string[]>(asignadas);
+  // Una única sede: null cuando el usuario no tiene ninguna asignada.
+  const [sel, setSel] = useState<string | null>(asignadas[0] ?? null);
   const [busy, setBusy] = useState(false);
-  // El Jefe (LIDER) gestiona las sedes de las personas igual que el ADMIN.
+  // El Jefe (LIDER) gestiona la sede de las personas igual que el ADMIN.
   const puedeEditar = esAdmin(yoPerfil?.rol) || yoPerfil?.rol === 'LIDER';
 
-  const abrir = () => { setSel(asignadas); setOpen(true); };
-  const toggle = (id: string) =>
-    setSel((prev) => prev.includes(id) ? prev.filter((s) => s !== id) : [...prev, id]);
+  const abrir = () => { setSel(asignadas[0] ?? null); setOpen(true); };
+  // Selección única: al tocar la sede activa se deselecciona (deja al usuario
+  // sin sede); tocar otra la reemplaza.
+  const elegir = (id: string) => setSel((prev) => prev === id ? null : id);
 
   const guardar = async () => {
     setBusy(true);
     try {
-      await setSedesDePerfil(perfil.id, sel);
-      // `perfiles.sede_id` sigue siendo la sede principal: se mantiene alineada
-      // con la primera seleccionada para no dejar el dato viejo inconsistente.
-      if ((perfil.sede_id ?? null) !== (sel[0] ?? null)) await updateSedeUsuario(perfil.id, sel[0] ?? null);
+      // El RPC reemplaza la sede y alinea `perfiles.sede_id` en una sola
+      // operación autorizada para ADMIN y Jefe (LIDER).
+      await setSedesDePerfil(perfil.id, sel ? [sel] : []);
       toast.success(t('common.success'));
       setOpen(false); onSaved();
-    } catch { toast.error(t('common.error')); }
+    } catch (e: any) { toast.error(e?.message ?? t('common.error')); }
     finally { setBusy(false); }
   };
 
-  const nombres = asignadas
-    .map((id) => sedes.find((s) => s.id === id)?.nombre)
-    .filter(Boolean) as string[];
+  const nombre = asignadas[0] ? sedes.find((s) => s.id === asignadas[0])?.nombre : undefined;
 
   return (
     <>
       <button onClick={abrir} disabled={!puedeEditar}
         className="flex flex-wrap items-center gap-1 text-left disabled:cursor-default">
-        {nombres.length === 0 && <span className="text-ink-300">{t('users.selectSede')}</span>}
-        {nombres.map((n) => (
-          <span key={n} className="badge bg-brand-500/15 text-brand-600 dark:text-brand-300">{n}</span>
-        ))}
+        {!nombre && <span className="text-ink-300">{t('users.selectSede')}</span>}
+        {nombre && (
+          <span className="badge bg-brand-500/15 text-brand-600 dark:text-brand-300">{nombre}</span>
+        )}
         {puedeEditar && <Pencil size={13} className="text-ink-400 ml-1" />}
       </button>
 
@@ -382,12 +381,12 @@ function SedesUsuario({ perfil, sedes, asignadas, onSaved }:
         title={t('users.sedes')} subtitle={t('users.sedesHint', { nombre: perfil.nombre })}>
         <div className="space-y-1.5 max-h-72 overflow-y-auto">
           {sedes.map((s) => {
-            const on = sel.includes(s.id);
+            const on = sel === s.id;
             return (
-              <button key={s.id} onClick={() => toggle(s.id)}
+              <button key={s.id} onClick={() => elegir(s.id)}
                 className={`w-full text-left p-3 rounded-xl border transition-all flex items-center gap-3 ${
                   on ? 'border-brand-500 bg-brand-500/5 ring-1 ring-brand-500' : 'border-ink-100 dark:border-white/10 hover:bg-ink-50 dark:hover:bg-white/5'}`}>
-                <div className={`w-5 h-5 rounded-md grid place-items-center shrink-0 border ${on ? 'bg-brand-500 border-brand-500 text-white' : 'border-ink-300 dark:border-white/20'}`}>
+                <div className={`w-5 h-5 rounded-full grid place-items-center shrink-0 border ${on ? 'bg-brand-500 border-brand-500 text-white' : 'border-ink-300 dark:border-white/20'}`}>
                   {on && <Check size={13} />}
                 </div>
                 <span className="text-sm">{sedeOption(s).label}</span>
@@ -450,7 +449,7 @@ function NuevoUsuarioModal({ open, onClose, onSaved, sedes }: { open: boolean; o
         <>
           <div className="grid sm:grid-cols-2 gap-4">
             <div>
-              <label className="label">{t('auth.name')} *</label>
+              <label className="label req">{t('auth.name')}</label>
               <input className="input" value={f.nombre} onChange={(e) => set('nombre', e.target.value)} />
             </div>
             <div>
@@ -458,7 +457,7 @@ function NuevoUsuarioModal({ open, onClose, onSaved, sedes }: { open: boolean; o
               <input className="input" value={f.cedula} onChange={(e) => set('cedula', e.target.value)} />
             </div>
             <div>
-              <label className="label">{t('auth.email')} *</label>
+              <label className="label req">{t('auth.email')}</label>
               <input type="email" className="input" value={f.email} onChange={(e) => set('email', e.target.value)} />
             </div>
             <div>
@@ -467,7 +466,7 @@ function NuevoUsuarioModal({ open, onClose, onSaved, sedes }: { open: boolean; o
             </div>
             {rolPorSede(f.rol) && (
               <div className="sm:col-span-2">
-                <label className="label">{t('users.sede')} *</label>
+                <label className="label req">{t('users.sede')}</label>
                 {sedes.length === 0
                   ? <p className="text-xs text-warning">{t('users.noSedes')}</p>
                   : <Select value={f.sedeId} onChange={(v) => set('sedeId', v)} placeholder={t('users.selectSede')} options={sedes.map(sedeOption)} />}

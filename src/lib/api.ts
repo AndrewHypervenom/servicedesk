@@ -241,13 +241,20 @@ export async function listSedesPorPerfil(): Promise<Record<string, string[]>> {
   return mapa;
 }
 
-/** Reemplaza el conjunto de sedes de un perfil. Solo ADMIN y Jefe (RLS lo exige). */
+/**
+ * Reemplaza el conjunto de sedes de un perfil y alinea la sede principal
+ * (`perfiles.sede_id`) con la primera, todo en un RPC SECURITY DEFINER.
+ *
+ * Antes se escribía `perfil_sedes` y `perfiles` por separado desde el cliente;
+ * como la RLS de `perfiles` solo deja UPDATE al ADMIN, al Jefe (LIDER) le fallaba
+ * con 403 y la ciudad no se guardaba. El RPC valida ADMIN/LIDER y hace ambas
+ * escrituras de forma atómica (ver migración set_sedes_de_perfil).
+ */
 export async function setSedesDePerfil(perfilId: string, sedeIds: string[]): Promise<void> {
-  const { error: delErr } = await supabase.from('perfil_sedes').delete().eq('perfil_id', perfilId);
-  if (delErr) throw delErr;
-  if (!sedeIds.length) return;
-  const { error } = await supabase.from('perfil_sedes')
-    .insert(sedeIds.map((sede_id) => ({ perfil_id: perfilId, sede_id })));
+  const { error } = await supabase.rpc('set_sedes_de_perfil', {
+    p_perfil_id: perfilId,
+    p_sede_ids: sedeIds,
+  });
   if (error) throw error;
 }
 

@@ -3,12 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserPlus, Search, Check, ArrowRight, ArrowLeft, FileSignature, Eye, Plus, X, SearchX } from 'lucide-react';
-import { listEquipos, getColaborador, asignarEquipo, createActa, subirPdfActa, listSedes } from '@/lib/api';
+import { listEquipos, getColaborador, asignarEquipo, createActa, subirPdfActa, subirActaFirmada, listSedes } from '@/lib/api';
 import { generarActaPdf, abrirBlob, type ActaItem } from '@/lib/pdf';
 import { ACTA_ASIGNACION } from '@/lib/actaTemplates';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { SignaturePad, type SignatureHandle } from '@/components/ui/SignaturePad';
+import { FirmaActa, type FirmaActaHandle } from '@/components/ui/FirmaActa';
 import { EstadoBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
@@ -31,7 +31,7 @@ export function Asignar() {
   const [q, setQ] = useState('');
   const [novedades, setNovedades] = useState('');
   const [busy, setBusy] = useState(false);
-  const sigRef = useRef<SignatureHandle>(null);
+  const firmaRef = useRef<FirmaActaHandle>(null);
 
   const seleccionados = Object.values(sel);
 
@@ -78,7 +78,7 @@ export function Asignar() {
     try {
       const blob = await generarActaPdf({
         tipo: 'ENTREGA', consecutivo: t('acta.previewWatermark'), items: buildItems(),
-        colaborador: colab, firmaDataUrl: sigRef.current?.toDataURL(),
+        colaborador: colab, firmaDataUrl: firmaRef.current?.toDataURL(),
         tecnico: perfil?.nombre, tecnicoCedula: perfil?.cedula ?? undefined,
         firmaTecnicoDataUrl: perfil?.firma_data, novedades,
       });
@@ -86,12 +86,29 @@ export function Asignar() {
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
   };
 
+  // Acta sin firmar, para el flujo manual: se descarga, se firma a mano y se
+  // vuelve a subir escaneada.
+  const descargarParaFirmar = async () => {
+    if (!seleccionados.length) { toast.error(t('assign.noneSelected')); return; }
+    try {
+      const blob = await generarActaPdf({
+        tipo: 'ENTREGA', consecutivo: 'ACTA', items: buildItems(),
+        colaborador: colab, tecnico: perfil?.nombre, tecnicoCedula: perfil?.cedula ?? undefined,
+        firmaTecnicoDataUrl: perfil?.firma_data, novedades,
+      });
+      abrirBlob(blob, `acta-entrega-${colab?.cedula ?? 'colaborador'}.pdf`);
+    } catch (e: any) { toast.error(e.message ?? t('common.error')); }
+  };
+
   const finalizar = async () => {
     if (!colab) return;
     if (!seleccionados.length) { toast.error(t('assign.noneSelected')); return; }
     if (excedePortatiles) { toast.error(t('assign.requiereAdmin')); return; }
-    const firma = sigRef.current?.toDataURL();
-    if (!firma) { toast.error(t('common.signHere')); return; }
+    const modo = firmaRef.current?.getMode() ?? 'digital';
+    const firma = modo === 'digital' ? firmaRef.current?.toDataURL() : null;
+    const archivoFirmado = modo === 'manual' ? firmaRef.current?.getArchivo() : null;
+    if (modo === 'digital' && !firma) { toast.error(t('common.signHere')); return; }
+    if (modo === 'manual' && !archivoFirmado) { toast.error(t('acta.faltaArchivo')); return; }
     setBusy(true);
     try {
       const c = colab;
@@ -109,6 +126,9 @@ export function Asignar() {
         tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: perfil?.firma_data, novedades,
       });
       await subirPdfActa(acta.id, blob);
+      // Firma física: además del PDF base, se guarda el acta escaneada como
+      // documento firmado autoritativo.
+      if (archivoFirmado) await subirActaFirmada(acta.id, archivoFirmado);
 
       for (const e of seleccionados) {
         await asignarEquipo({
@@ -303,7 +323,7 @@ export function Asignar() {
               <Eye size={16} /> {t('acta.preview')}
             </button>
 
-            <SignaturePad ref={sigRef} />
+            <FirmaActa ref={firmaRef} onDescargar={descargarParaFirmar} />
 
             <div className="flex justify-between mt-6">
               <Button icon={ArrowLeft} disabled={busy} onClick={() => setStep(1)}>{t('common.back')}</Button>

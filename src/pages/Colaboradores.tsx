@@ -110,16 +110,19 @@ export function Colaboradores() {
         subtitle={editando ? t('collaborators.editHint') : undefined}>
         <div className="grid sm:grid-cols-2 gap-4">
           {[['cedula', 'C.C. *'], ['nombre', t('auth.name') + ' *'], ['cargo', 'Cargo'], ['correo', t('auth.email')],
-            ['proyecto', t('equipo.proyectoAsignado')], ['lider', 'Líder'], ['telefono', 'Teléfono']].map(([k, label]) => (
+            ['proyecto', t('equipo.proyectoAsignado')], ['lider', 'Líder'], ['telefono', 'Teléfono']].map(([k, label]) => {
+            const req = label.endsWith(' *');
+            return (
             <div key={k}>
-              <label className="label">{label}</label>
+              <label className={`label${req ? ' req' : ''}`}>{req ? label.slice(0, -2) : label}</label>
               <input className="input disabled:opacity-60 disabled:cursor-not-allowed"
                 disabled={k === 'cedula' && !!editando}
                 value={(f as any)[k] ?? ''} onChange={(e) => setF({ ...f, [k]: e.target.value })} />
             </div>
-          ))}
+            );
+          })}
           <div>
-            <label className="label">{t('users.sede')} *</label>
+            <label className="label req">{t('users.sede')}</label>
             <Select value={f.sede_id ?? ''} onChange={(v) => setF({ ...f, sede_id: v || null })}
               placeholder={t('users.selectSede')} options={sedes.map(sedeOption)} />
           </div>

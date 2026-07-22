@@ -3,12 +3,12 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { Undo2, Search, Warehouse, Truck, FileSignature, Eye, Check, X, Plus, PackageX } from 'lucide-react';
-import { listEquipos, listProveedores, getColaborador, devolverEquipo, createActa, subirPdfActa } from '@/lib/api';
+import { listEquipos, listProveedores, getColaborador, devolverEquipo, createActa, subirPdfActa, subirActaFirmada } from '@/lib/api';
 import { generarActaPdf, abrirBlob, type ActaItem } from '@/lib/pdf';
 import { ACTA_DEVOLUCION } from '@/lib/actaTemplates';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { SignaturePad, type SignatureHandle } from '@/components/ui/SignaturePad';
+import { FirmaActa, type FirmaActaHandle } from '@/components/ui/FirmaActa';
 import { Select } from '@/components/ui/Select';
 import { EstadoBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -29,7 +29,7 @@ export function Devolucion() {
   const [proveedor, setProveedor] = useState('');
   const [novedades, setNovedades] = useState('');
   const [busy, setBusy] = useState(false);
-  const sigRef = useRef<SignatureHandle>(null);
+  const firmaRef = useRef<FirmaActaHandle>(null);
 
   const seleccionados = Object.values(sel);
 
@@ -56,17 +56,35 @@ export function Devolucion() {
       const colab = primero.cedula_asignado ? await getColaborador(primero.cedula_asignado) : null;
       const blob = await generarActaPdf({
         tipo: 'DEVOLUCION', consecutivo: t('acta.previewWatermark'), items: buildItems(),
-        colaborador: colab, firmaDataUrl: sigRef.current?.toDataURL(), tecnico: perfil?.nombre,
+        colaborador: colab, firmaDataUrl: firmaRef.current?.toDataURL(), tecnico: perfil?.nombre,
         tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: perfil?.firma_data, novedades,
       });
       abrirBlob(blob, 'vista-previa-acta.pdf');
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
   };
 
+  // Acta sin firmar para el flujo manual (descargar, firmar a mano, subir).
+  const descargarParaFirmar = async () => {
+    if (!seleccionados.length) { toast.error(t('assign.noneSelected')); return; }
+    try {
+      const primero = seleccionados[0];
+      const colab = primero.cedula_asignado ? await getColaborador(primero.cedula_asignado) : null;
+      const blob = await generarActaPdf({
+        tipo: 'DEVOLUCION', consecutivo: 'ACTA', items: buildItems(),
+        colaborador: colab, tecnico: perfil?.nombre, tecnicoCedula: perfil?.cedula ?? undefined,
+        firmaTecnicoDataUrl: perfil?.firma_data, novedades,
+      });
+      abrirBlob(blob, `acta-devolucion-${primero.serial}.pdf`);
+    } catch (e: any) { toast.error(e.message ?? t('common.error')); }
+  };
+
   const finalizar = async () => {
     if (!seleccionados.length) { toast.error(t('assign.noneSelected')); return; }
     if (destino === 'proveedor' && !proveedor) { toast.error(t('return.selectSupplier')); return; }
-    const firma = sigRef.current?.toDataURL();
+    const modo = firmaRef.current?.getMode() ?? 'digital';
+    const firma = modo === 'digital' ? firmaRef.current?.toDataURL() : null;
+    const archivoFirmado = modo === 'manual' ? firmaRef.current?.getArchivo() : null;
+    if (modo === 'manual' && !archivoFirmado) { toast.error(t('acta.faltaArchivo')); return; }
     setBusy(true);
     try {
       const primero = seleccionados[0];
@@ -74,7 +92,8 @@ export function Devolucion() {
       const acta = await createActa({
         tipo: 'DEVOLUCION', equipo_id: primero.id,
         items: seleccionados.map((e) => ({ equipo_id: e.id, observaciones: obs[e.id] })),
-        cedula_colaborador: primero.cedula_asignado, firma_data: firma, firmado: !!firma, observaciones: novedades,
+        cedula_colaborador: primero.cedula_asignado, firma_data: firma,
+        firmado: !!firma || !!archivoFirmado, observaciones: novedades,
       });
       const blob = await generarActaPdf({
         tipo: 'DEVOLUCION', consecutivo: acta.consecutivo || 'ACTA', items: buildItems(),
@@ -82,6 +101,7 @@ export function Devolucion() {
         tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: perfil?.firma_data, novedades,
       });
       await subirPdfActa(acta.id, blob);
+      if (archivoFirmado) await subirActaFirmada(acta.id, archivoFirmado);
       for (const e of seleccionados) {
         await devolverEquipo({
           equipoId: e.id, aProveedor: destino === 'proveedor', proveedor: proveedor || undefined,
@@ -194,7 +214,7 @@ export function Devolucion() {
 
             <div>
               <label className="label">{t('acta.signature')}</label>
-              <SignaturePad ref={sigRef} />
+              <FirmaActa ref={firmaRef} onDescargar={descargarParaFirmar} />
             </div>
 
             <div className="flex justify-end">

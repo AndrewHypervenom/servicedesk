@@ -273,7 +273,7 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
             /* Varias ubicaciones en el archivo: se mapea cada una contra una sede. */
             <>
               <div className="flex items-center gap-2">
-                <label className="label !mb-0">Sedes destino *</label>
+                <label className="label req !mb-0">Sedes destino</label>
                 {sedesListas && <CheckPop size={14} />}
               </div>
               <p className="text-xs text-ink-400 mt-1 mb-3">
@@ -321,7 +321,7 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
             /* Una sola ubicación (o ninguna): un único selector, como toda la vida. */
             <>
               <div className="flex items-center gap-2">
-                <label className="label !mb-0">Sede destino *</label>
+                <label className="label req !mb-0">Sede destino</label>
                 {res.sedeDefecto && <CheckPop size={14} />}
               </div>
               <p className="text-xs text-ink-400 mt-1 mb-2.5">
