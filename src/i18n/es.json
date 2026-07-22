@@ -17,7 +17,52 @@
     "supplierReport": "Devolución a proveedor",
     "integrations": "Integraciones API",
     "users": "Usuarios y roles",
+    "audit": "Auditoría",
     "settings": "Ajustes"
+  },
+  "audit": {
+    "title": "Auditoría",
+    "subtitle": "Todo lo que se crea, edita, oculta o elimina en el sistema",
+    "searchPlaceholder": "Buscar por registro, actor o ID…",
+    "allEntities": "Todas las entidades",
+    "allActions": "Todas las acciones",
+    "from": "Desde",
+    "to": "Hasta",
+    "exportExcel": "Exportar Excel",
+    "system": "Sistema",
+    "count": "{{n}} registros",
+    "cols": {
+      "date": "Fecha y hora",
+      "actor": "Usuario",
+      "action": "Acción",
+      "entity": "Entidad",
+      "record": "Registro",
+      "id": "ID",
+      "detail": "Detalle"
+    },
+    "empty": "Sin actividad registrada todavía",
+    "emptyDesc": "Aquí aparecerá cada creación, edición y eliminación en cuanto ocurra. Se registra desde que se activó la bitácora.",
+    "noMatch": "Ningún registro coincide con los filtros",
+    "before": "antes",
+    "after": "después",
+    "actions": {
+      "crear": "Creó",
+      "editar": "Editó",
+      "ocultar": "Ocultó",
+      "restaurar": "Restauró",
+      "eliminar": "Eliminó"
+    },
+    "entities": {
+      "equipos": "Equipo",
+      "colaboradores": "Colaborador",
+      "proveedores": "Proveedor",
+      "perfiles": "Usuario",
+      "actas": "Acta",
+      "sedes": "Sede",
+      "paises": "País",
+      "integraciones": "Integración",
+      "solicitudes_borrado": "Solicitud"
+    }
   },
   "common": {
     "search": "Buscar",
@@ -157,6 +202,7 @@
     "tipo": "Tipo de activo",
     "estadoFisico": "Estado físico",
     "estadoAsignacion": "Estado de asignación",
+    "cambiarEstado": "Cambiar estado",
     "propiedad": "Propiedad",
     "proveedorPropietario": "Proveedor / Propietario",
     "fechaIngreso": "Fecha de ingreso",
@@ -213,6 +259,16 @@
     "EN_MANTENIMIENTO": "Fuera de servicio por reparación.",
     "EN_DEVOLUCION": "En proceso de devolución a proveedor.",
     "DE_BAJA": "Retirado definitivamente del inventario."
+  },
+  "estadoCambio": {
+    "titulo": "Cambiar estado del equipo",
+    "actual": "Estado actual",
+    "nuevo": "Nuevo estado",
+    "motivo": "Motivo u observaciones (opcional)",
+    "confirmar": "Registrar cambio",
+    "exito": "Estado actualizado",
+    "bloqueado": "Este equipo está {{estado}}. Su estado se cambia desde el flujo de asignación o devolución, no manualmente.",
+    "bloqueadoCorto": "Asignado o en devolución: se cambia desde Asignar/Devolución."
   },
   "estadoFis": {
     "BUENO": "Bueno",
@@ -321,7 +377,11 @@
     "reviewData": "Revise y ajuste los datos que saldrán en el acta",
     "novedades": "Novedades del acta (opcional)",
     "noneSelected": "Seleccione al menos un equipo",
-    "noCandidates": "Ningún equipo disponible coincide con la búsqueda."
+    "noCandidates": "Ningún equipo disponible coincide con la búsqueda.",
+    "unPortatilYaAsignado": "Este colaborador ya tiene un portátil asignado. Un colaborador solo puede tener un portátil.",
+    "dosPortatilesSeleccionados": "Seleccionó más de un portátil. Un colaborador solo puede tener un portátil.",
+    "requiereAdmin": "Asignar un segundo portátil (caso de gerentes) solo lo puede hacer un administrador. Pida a un administrador que realice la entrega.",
+    "adminOverridePortatil": "Este colaborador ya tiene un portátil. Como administrador, puede asignar uno adicional (gerentes)."
   },
   "return": {
     "title": "Devolución de equipo",
@@ -454,6 +514,7 @@
     "invalidImage": "El archivo debe ser una imagen PNG",
     "imageTooLarge": "La imagen es demasiado grande (máx. 2 MB)",
     "profileSaved": "Datos actualizados",
+    "profileSaveDenied": "No se pudo guardar: tu usuario no tiene permiso para editar este perfil. Falta habilitar la escritura del propio perfil en la base (RLS).",
     "signatureUpdated": "Firma actualizada",
     "security": "Seguridad",
     "securityHint": "Cambia tu contraseña. Si entraste con una temporal, define aquí la tuya.",

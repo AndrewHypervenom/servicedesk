@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import {
   LayoutDashboard, Boxes, UserPlus, Undo2, ScanLine, Users, FileSignature,
-  Truck, PackageOpen, Plug, ShieldCheck, Settings, MapPin, X, ChartPie, ShieldQuestion,
+  Truck, PackageOpen, Plug, ShieldCheck, Settings, MapPin, X, ChartPie, ShieldQuestion, History,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { contarSolicitudesPendientes } from '@/lib/api';
@@ -46,6 +46,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     { to: '/integraciones', icon: Plug, label: t('nav.integrations'), roles: RUTA_ROLES['/integraciones'] },
     { to: '/usuarios', icon: ShieldCheck, label: t('nav.users'), roles: RUTA_ROLES['/usuarios'] },
     { to: '/solicitudes', icon: ShieldQuestion, label: 'Solicitudes', roles: RUTA_ROLES['/solicitudes'], distintivo: pendientes },
+    { to: '/auditoria', icon: History, label: t('nav.audit'), roles: RUTA_ROLES['/auditoria'] },
     { to: '/ajustes', icon: Settings, label: t('nav.settings') },
   ];
 

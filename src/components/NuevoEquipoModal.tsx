@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { createEquipo, updateEquipo, listSedes, listMarcas, listProveedores } from '@/lib/api';
+import { createEquipo, updateEquipo, listSedes, listMarcas, listProveedores, cambiarEstadoEquipo } from '@/lib/api';
+import { transicionesEstado, puedeCambiarEstado } from '@/lib/estados';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
@@ -61,12 +62,23 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
       : { tipo: 'PORTATIL', estado_fisico: 'BUENO', propiedad: 'EMPRESA', sede_id: sedeFija ? perfil?.sede_id : null });
   }, [open, equipo]);
 
+  // El estado de asignación no viaja en el patch normal: cambiarlo debe dejar
+  // rastro en la trazabilidad, así que se hace por separado. Solo se ofrecen las
+  // transiciones válidas desde el estado actual (ver `transicionesEstado`); un
+  // equipo asignado o en devolución se cambia desde Asignar/Devolución.
+  const estadoActual = equipo?.estado_asignacion;
+  const opcionesEstado = estadoActual ? [estadoActual, ...transicionesEstado(estadoActual)] : [];
+  const estadoBloqueado = !!estadoActual && !puedeCambiarEstado(estadoActual);
+
   const guardar = useMutation({
     mutationFn: async () => {
       if (!editando) return createEquipo(f);
       const patch: Partial<Equipo> = {};
       for (const k of EDITABLES) if (f[k] !== undefined) (patch as any)[k] = f[k];
-      return updateEquipo(equipo!.id, patch);
+      await updateEquipo(equipo!.id, patch);
+      if (f.estado_asignacion && f.estado_asignacion !== equipo!.estado_asignacion) {
+        await cambiarEstadoEquipo({ equipoId: equipo!.id, estadoNuevo: f.estado_asignacion });
+      }
     },
 
     // Solo la edición se pinta de forma optimista: al crear no tenemos el id
@@ -128,6 +140,20 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
             options={FISICOS.map((x) => ({ value: x, label: t(`estadoFis.${x}`), description: t(`estadoFisDesc.${x}`) }))}
           />
         </div>
+        {editando && (
+          <div>
+            <label className="label">{t('equipo.estadoAsignacion')}</label>
+            <Select
+              value={f.estado_asignacion ?? ''}
+              onChange={(v) => set('estado_asignacion', v)}
+              disabled={estadoBloqueado}
+              options={opcionesEstado.map((x) => ({ value: x, label: t(`estadoAsig.${x}`), description: t(`estadoAsigDesc.${x}`) }))}
+            />
+            {estadoBloqueado && (
+              <p className="text-[11px] text-ink-400 mt-1 leading-snug">{t('estadoCambio.bloqueadoCorto')}</p>
+            )}
+          </div>
+        )}
         <div>
           <label className="label">{t('equipo.propiedad')}</label>
           <Select

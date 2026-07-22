@@ -10,6 +10,15 @@ export function fmtDate(d?: string | null, lng = 'es'): string {
   }
 }
 
+export function fmtDateTime(d?: string | null, lng = 'es'): string {
+  if (!d) return '—';
+  try {
+    return format(parseISO(d), "dd MMM yyyy, HH:mm", { locale: lng === 'pt' ? ptBR : es });
+  } catch {
+    return d;
+  }
+}
+
 export function diasRestantes(d?: string | null): number | null {
   if (!d) return null;
   try { return differenceInDays(parseISO(d), new Date()); } catch { return null; }

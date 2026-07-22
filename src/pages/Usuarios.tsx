@@ -99,12 +99,16 @@ export function Usuarios() {
                 </td>
                 <td className="px-4 py-3 text-ink-500">{p.correo}</td>
                 <td className="px-4 py-3">
-                  <Select
-                    value={p.rol}
-                    onChange={(v) => change(p.id, v as RolUsuario)}
-                    className="!w-auto !py-1.5 text-xs"
-                    options={ROLES.map((r) => ({ value: r, label: t(`rol.${r}`), description: t(`rolDesc.${r}`) }))}
-                  />
+                  {soyAdmin ? (
+                    <Select
+                      value={p.rol}
+                      onChange={(v) => change(p.id, v as RolUsuario)}
+                      className="!w-auto !py-1.5 text-xs"
+                      options={ROLES.map((r) => ({ value: r, label: t(`rol.${r}`), description: t(`rolDesc.${r}`) }))}
+                    />
+                  ) : (
+                    <span className={`badge ${rolColor[p.rol]}`}>{t(`rol.${p.rol}`)}</span>
+                  )}
                 </td>
                 <td className="px-4 py-3">
                   {rolPorSede(p.rol)
@@ -326,17 +330,21 @@ function BorrarUsuario({ perfil, esYo, onDone }:
 }
 
 /**
- * Sedes de un usuario. Un Técnico o Líder de sede puede operar en varias, y solo
- * el Administrador y el Jefe pueden cambiárselas (la RLS de perfil_sedes lo exige).
+ * Sedes de un usuario. Un Técnico o Líder de sede puede operar en varias. El
+ * Administrador y el Jefe (LIDER) pueden cambiárselas: al guardar también se
+ * ajusta `perfiles.sede_id`. La RLS de `perfiles` y `perfil_sedes` habilita la
+ * escritura a ADMIN y LIDER (ver `supabase/rls-perfiles.sql`). Para los demás
+ * las sedes se muestran en modo lectura.
  */
 function SedesUsuario({ perfil, sedes, asignadas, onSaved }:
   { perfil: Perfil; sedes: Sede[]; asignadas: string[]; onSaved: () => void }) {
   const { t } = useTranslation();
-  const { operaTodasLasSedes } = useApp();
+  const { perfil: yoPerfil } = useApp();
   const [open, setOpen] = useState(false);
   const [sel, setSel] = useState<string[]>(asignadas);
   const [busy, setBusy] = useState(false);
-  const puedeEditar = operaTodasLasSedes();
+  // El Jefe (LIDER) gestiona las sedes de las personas igual que el ADMIN.
+  const puedeEditar = esAdmin(yoPerfil?.rol) || yoPerfil?.rol === 'LIDER';
 
   const abrir = () => { setSel(asignadas); setOpen(true); };
   const toggle = (id: string) =>

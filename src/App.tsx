@@ -10,6 +10,7 @@ import { DefinirPassword } from '@/pages/DefinirPassword';
 import { Dashboard } from '@/pages/Dashboard';
 import { Analitica } from '@/pages/Analitica';
 import { Solicitudes } from '@/pages/Solicitudes';
+import { Auditoria } from '@/pages/Auditoria';
 import { Inventario } from '@/pages/Inventario';
 import { EquipoDetalle } from '@/pages/EquipoDetalle';
 import { Asignar } from '@/pages/Asignar';
@@ -73,6 +74,7 @@ export default function App() {
             <Route path="/integraciones" element={<Guard><Integraciones /></Guard>} />
             <Route path="/usuarios" element={<Guard><Usuarios /></Guard>} />
             <Route path="/solicitudes" element={<Guard><Solicitudes /></Guard>} />
+            <Route path="/auditoria" element={<Guard><Auditoria /></Guard>} />
             <Route path="/ajustes" element={<Ajustes />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

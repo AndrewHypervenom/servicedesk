@@ -17,7 +17,52 @@
     "supplierReport": "Devolução ao fornecedor",
     "integrations": "Integrações API",
     "users": "Usuários e perfis",
+    "audit": "Auditoria",
     "settings": "Ajustes"
+  },
+  "audit": {
+    "title": "Auditoria",
+    "subtitle": "Tudo o que se cria, edita, oculta ou exclui no sistema",
+    "searchPlaceholder": "Buscar por registro, autor ou ID…",
+    "allEntities": "Todas as entidades",
+    "allActions": "Todas as ações",
+    "from": "De",
+    "to": "Até",
+    "exportExcel": "Exportar Excel",
+    "system": "Sistema",
+    "count": "{{n}} registros",
+    "cols": {
+      "date": "Data e hora",
+      "actor": "Usuário",
+      "action": "Ação",
+      "entity": "Entidade",
+      "record": "Registro",
+      "id": "ID",
+      "detail": "Detalhe"
+    },
+    "empty": "Ainda sem atividade registrada",
+    "emptyDesc": "Aqui aparecerá cada criação, edição e exclusão assim que ocorrer. Registra-se a partir da ativação do log.",
+    "noMatch": "Nenhum registro corresponde aos filtros",
+    "before": "antes",
+    "after": "depois",
+    "actions": {
+      "crear": "Criou",
+      "editar": "Editou",
+      "ocultar": "Ocultou",
+      "restaurar": "Restaurou",
+      "eliminar": "Excluiu"
+    },
+    "entities": {
+      "equipos": "Equipamento",
+      "colaboradores": "Colaborador",
+      "proveedores": "Fornecedor",
+      "perfiles": "Usuário",
+      "actas": "Termo",
+      "sedes": "Unidade",
+      "paises": "País",
+      "integraciones": "Integração",
+      "solicitudes_borrado": "Solicitação"
+    }
   },
   "common": {
     "search": "Buscar",
@@ -157,6 +202,7 @@
     "tipo": "Tipo de ativo",
     "estadoFisico": "Estado físico",
     "estadoAsignacion": "Estado de atribuição",
+    "cambiarEstado": "Alterar estado",
     "propiedad": "Propriedade",
     "proveedorPropietario": "Fornecedor / Proprietário",
     "fechaIngreso": "Data de entrada",
@@ -213,6 +259,16 @@
     "EN_MANTENIMIENTO": "Fora de serviço por reparo.",
     "EN_DEVOLUCION": "Em processo de devolução ao fornecedor.",
     "DE_BAJA": "Retirado definitivamente do inventário."
+  },
+  "estadoCambio": {
+    "titulo": "Alterar estado do equipamento",
+    "actual": "Estado atual",
+    "nuevo": "Novo estado",
+    "motivo": "Motivo ou observações (opcional)",
+    "confirmar": "Registrar alteração",
+    "exito": "Estado atualizado",
+    "bloqueado": "Este equipamento está {{estado}}. Seu estado é alterado pelo fluxo de atribuição ou devolução, não manualmente.",
+    "bloqueadoCorto": "Atribuído ou em devolução: altere em Atribuir/Devolução."
   },
   "estadoFis": {
     "BUENO": "Bom",
@@ -321,7 +377,11 @@
     "reviewData": "Revise e ajuste os dados que sairão no termo",
     "novedades": "Novidades do termo (opcional)",
     "noneSelected": "Selecione ao menos um equipamento",
-    "noCandidates": "Nenhum equipamento disponível corresponde à busca."
+    "noCandidates": "Nenhum equipamento disponível corresponde à busca.",
+    "unPortatilYaAsignado": "Este colaborador já tem um notebook atribuído. Um colaborador só pode ter um notebook.",
+    "dosPortatilesSeleccionados": "Você selecionou mais de um notebook. Um colaborador só pode ter um notebook.",
+    "requiereAdmin": "Atribuir um segundo notebook (caso de gerentes) só pode ser feito por um administrador. Peça a um administrador que faça a entrega.",
+    "adminOverridePortatil": "Este colaborador já tem um notebook. Como administrador, você pode atribuir um adicional (gerentes)."
   },
   "return": {
     "title": "Devolução de equipamento",
@@ -454,6 +514,7 @@
     "invalidImage": "O arquivo deve ser uma imagem PNG",
     "imageTooLarge": "A imagem é muito grande (máx. 2 MB)",
     "profileSaved": "Dados atualizados",
+    "profileSaveDenied": "Não foi possível salvar: seu usuário não tem permissão para editar este perfil. Falta habilitar a escrita do próprio perfil no banco (RLS).",
     "signatureUpdated": "Assinatura atualizada",
     "security": "Segurança",
     "securityHint": "Altere sua senha. Se entrou com uma temporária, defina a sua aqui.",

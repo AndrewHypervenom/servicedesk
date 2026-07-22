@@ -11,14 +11,19 @@ export const RUTA_ROLES: Record<string, RolUsuario[]> = {
   '/reporte-proveedor': ['ADMIN', 'LIDER', 'JEFE_SEDE'],
   '/sedes': ['ADMIN'],
   '/integraciones': ['ADMIN'],
-  '/usuarios': ['ADMIN', 'LIDER', 'JEFE_SEDE'],
-  // Analítica agrega el parque completo para presentarlo fuera del equipo, así
-  // que se restringe a los roles con visión global. JEFE_SEDE y TECNICO siguen
-  // viendo su sede en el resto de pantallas vía `scopeEquipos`.
-  '/analitica': ['ADMIN', 'LIDER'],
+  // El Líder de sede (JEFE_SEDE) no gestiona usuarios: no ve la pantalla de
+  // Usuarios, ni los roles, ni a los técnicos. Solo ADMIN y LIDER (Jefe) entran.
+  '/usuarios': ['ADMIN', 'LIDER'],
+  // Analítica: ADMIN y LIDER ven el parque completo; el JEFE_SEDE también entra,
+  // pero la propia pantalla aplica `scopeEquipos`, así que ve solo los KPIs y
+  // gráficos de SU sede. TECNICO queda fuera (solo opera, no analiza).
+  '/analitica': ['ADMIN', 'LIDER', 'JEFE_SEDE'],
   // Solo el ADMIN resuelve solicitudes de borrado; si el solicitante pudiera
   // aprobarlas, la aprobación no significaría nada.
   '/solicitudes': ['ADMIN'],
+  // La bitácora de auditoría es de supervisión: solo el ADMIN. La RLS de la
+  // tabla `auditoria` es la barrera real; esto solo oculta la vista.
+  '/auditoria': ['ADMIN'],
 };
 
 /**

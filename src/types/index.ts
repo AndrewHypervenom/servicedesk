@@ -173,6 +173,20 @@ export interface Perfil {
   firma_data?: string | null;
 }
 
+export type AccionAuditoria = 'INSERT' | 'UPDATE' | 'DELETE';
+
+/** Un renglón de la bitácora. En UPDATE, `datos` es un diff por campo
+ *  `{ campo: { antes, despues } }`; en INSERT/DELETE es el registro completo. */
+export interface RegistroAuditoria {
+  id: number;
+  entidad: string;
+  entidad_id: string | null;
+  accion: AccionAuditoria;
+  actor: string | null;
+  datos: Record<string, unknown> | null;
+  creado_en: string;
+}
+
 export interface Integracion {
   id: string;
   nombre: string;

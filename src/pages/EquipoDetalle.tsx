@@ -5,9 +5,10 @@ import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import {
   ArrowLeft, Printer, Download, QrCode, User, MapPin, Calendar, FileText,
-  Cpu, ShieldCheck, Building2, History, Pencil, PackageX,
+  Cpu, ShieldCheck, Building2, History, Pencil, PackageX, Wrench,
 } from 'lucide-react';
 import { getEquipo, trazabilidad, getColaborador } from '@/lib/api';
+import { CambiarEstadoModal } from '@/components/CambiarEstadoModal';
 import { equipoQrDataUrl, imprimirEtiquetaQr, descargarQr } from '@/lib/qr';
 import { fmtDate, diasRestantes } from '@/lib/format';
 import { EstadoBadge, FisicoBadge, Badge } from '@/components/ui/Badge';
@@ -25,10 +26,11 @@ export function EquipoDetalle() {
   const [qr, setQr] = useState('');
   const [colab, setColab] = useState<Colaborador | null>(null);
   const [editar, setEditar] = useState(false);
+  const [cambiarEstado, setCambiarEstado] = useState(false);
   const puedeEditar = can('ADMIN', 'LIDER', 'JEFE_SEDE');
 
   const { data: equipo, isLoading, refetch } = useQuery({ queryKey: ['equipo', id], queryFn: () => getEquipo(id) });
-  const { data: movs = [] } = useQuery({ queryKey: ['traz', id], queryFn: () => trazabilidad(id) });
+  const { data: movs = [], refetch: refetchMovs } = useQuery({ queryKey: ['traz', id], queryFn: () => trazabilidad(id) });
 
   useEffect(() => { if (equipo) equipoQrDataUrl(equipo.codigo_qr, 300).then(setQr); }, [equipo]);
   useEffect(() => { if (equipo?.cedula_asignado) getColaborador(equipo.cedula_asignado).then(setColab); else setColab(null); }, [equipo]);
@@ -102,9 +104,14 @@ export function EquipoDetalle() {
                 <div className="text-xs text-ink-400 font-mono mt-2">{equipo.codigo_qr}</div>
               </div>
               {puedeEditar && (
-                <button onClick={() => setEditar(true)} className="btn-secondary shrink-0">
-                  <Pencil size={16} /> {t('common.edit')}
-                </button>
+                <div className="flex gap-2 shrink-0">
+                  <button onClick={() => setCambiarEstado(true)} className="btn-secondary">
+                    <Wrench size={16} /> {t('equipo.cambiarEstado')}
+                  </button>
+                  <button onClick={() => setEditar(true)} className="btn-secondary">
+                    <Pencil size={16} /> {t('common.edit')}
+                  </button>
+                </div>
               )}
             </div>
 
@@ -183,7 +190,14 @@ export function EquipoDetalle() {
       </div>
 
       {puedeEditar && (
-        <NuevoEquipoModal open={editar} onClose={() => setEditar(false)} onSaved={() => refetch()} equipo={equipo} />
+        <>
+          <NuevoEquipoModal open={editar} onClose={() => setEditar(false)} onSaved={() => refetch()} equipo={equipo} />
+          <CambiarEstadoModal
+            equipo={cambiarEstado ? equipo : null}
+            onClose={() => setCambiarEstado(false)}
+            onSaved={() => { refetch(); refetchMovs(); }}
+          />
+        </>
       )}
     </div>
   );

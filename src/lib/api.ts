@@ -1,8 +1,9 @@
 import { supabase } from './supabase';
+import { tipoMovimientoEstado } from './estados';
 import type {
   Equipo, Colaborador, Proveedor, Movimiento, Acta, Perfil, Integracion,
   TipoMovimiento, EstadoAsignacion, RolUsuario, Pais, Sede, Marca,
-  EntidadBorrable, SolicitudBorrado,
+  EntidadBorrable, SolicitudBorrado, RegistroAuditoria,
 } from '@/types';
 
 // El filtro `eliminado_en is null` se repite en cliente aunque RLS ya lo aplica.
@@ -33,9 +34,13 @@ export async function findByCode(code: string): Promise<Equipo | null> {
 export async function createEquipo(e: Partial<Equipo>): Promise<Equipo> {
   const { data, error } = await supabase.from('equipos').insert(e).select().single();
   if (error) throw error;
-  await supabase.rpc('registrar_movimiento', {
+  // El equipo ya quedó creado; el movimiento de recepción es su primer rastro de
+  // trazabilidad. No se traga el error en silencio: si el RPC falla (p. ej. la
+  // sobrecarga que devolvía 300) se avisa por consola, sin tumbar la creación.
+  const { error: errMov } = await supabase.rpc('registrar_movimiento', {
     p_equipo_id: (data as Equipo).id, p_tipo: 'RECEPCION', p_estado_nuevo: 'DISPONIBLE',
   });
+  if (errMov) console.error('registrar_movimiento (RECEPCION) falló:', errMov.message);
   if (e.marca) await ensureMarca(e.marca);
   return data as Equipo;
 }
@@ -100,6 +105,23 @@ export async function registrarMovimiento(p: {
     p_proyecto_destino: p.proyectoDestino ?? null, p_proveedor: p.proveedor ?? null, p_observaciones: p.obs ?? null,
   });
   if (error) throw error;
+}
+
+/**
+ * Cambio manual de estado de asignación (a mantenimiento, baja o de vuelta a
+ * disponible). Reutiliza `registrar_movimiento`, que aplica el nuevo estado y
+ * deja el rastro en la trazabilidad. Las transiciones válidas se validan antes
+ * en la interfaz con `transicionesEstado`; la base es la barrera final.
+ */
+export async function cambiarEstadoEquipo(p: {
+  equipoId: string; estadoNuevo: EstadoAsignacion; obs?: string;
+}): Promise<void> {
+  await registrarMovimiento({
+    equipoId: p.equipoId,
+    tipo: tipoMovimientoEstado(p.estadoNuevo),
+    estadoNuevo: p.estadoNuevo,
+    obs: p.obs,
+  });
 }
 
 export async function listColaboradores(): Promise<Colaborador[]> {
@@ -384,6 +406,18 @@ export async function eliminarDefinitivo(s: SolicitudBorrado, adminId: string): 
     .update({ estado: 'APROBADA', resuelto_por: adminId, resuelto_en: new Date().toISOString() })
     .eq('id', s.id);
   if (e2) throw e2;
+}
+
+/**
+ * Bitácora de actividad. Solo el ADMIN recibe filas (lo exige la RLS de
+ * `auditoria`); para el resto la consulta devuelve 0 registros. Se trae un tope
+ * y se filtra en cliente, como el resto de listados.
+ */
+export async function listAuditoria(limite = 500): Promise<RegistroAuditoria[]> {
+  const { data, error } = await supabase.from('auditoria').select('*')
+    .order('creado_en', { ascending: false }).limit(limite);
+  if (error) throw error;
+  return (data as RegistroAuditoria[]) ?? [];
 }
 
 export async function listPaises(): Promise<Pais[]> {

@@ -2,10 +2,9 @@ import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserPlus, Search, Check, ArrowRight, ArrowLeft, FileSignature, Mail, Eye, Plus, X, SearchX } from 'lucide-react';
+import { UserPlus, Search, Check, ArrowRight, ArrowLeft, FileSignature, Eye, Plus, X, SearchX } from 'lucide-react';
 import { listEquipos, getColaborador, asignarEquipo, createActa, subirPdfActa, listSedes } from '@/lib/api';
-import { generarActaPdf, abrirBlob, blobToBase64, type ActaItem } from '@/lib/pdf';
-import { supabase } from '@/lib/supabase';
+import { generarActaPdf, abrirBlob, type ActaItem } from '@/lib/pdf';
 import { ACTA_ASIGNACION } from '@/lib/actaTemplates';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -31,7 +30,6 @@ export function Asignar() {
   const [obs, setObs] = useState<Record<string, string>>({});
   const [q, setQ] = useState('');
   const [novedades, setNovedades] = useState('');
-  const [sendMail, setSendMail] = useState(true);
   const [busy, setBusy] = useState(false);
   const sigRef = useRef<SignatureHandle>(null);
 
@@ -40,6 +38,21 @@ export function Asignar() {
   // Un Técnico o Líder de sede solo asigna a colaboradores de sus sedes. Puede
   // verlos, pero no continuar. La base lo vuelve a validar (asignacion_guard).
   const permitido = !colab || puedeAsignarASede(colab.sede_id);
+
+  // Regla: un colaborador no puede terminar con más de un portátil. La excepción
+  // (p. ej. gerentes) solo la puede autorizar un ADMIN, que asigna directamente.
+  // Contamos los portátiles ya en su poder más los portátiles de esta entrega.
+  const esAdmin = perfil?.rol === 'ADMIN';
+  const portatilesActuales = colab
+    ? equipos.filter((e) => e.cedula_asignado === colab.cedula &&
+        e.tipo === 'PORTATIL' && e.estado_asignacion === 'ASIGNADO').length
+    : 0;
+  const portatilesSeleccionados = seleccionados.filter((e) => e.tipo === 'PORTATIL').length;
+  const totalPortatiles = portatilesActuales + portatilesSeleccionados;
+  // Más de un portátil en total: bloqueado para todos salvo el ADMIN.
+  const excedePortatiles = totalPortatiles > 1 && !esAdmin;
+  // Aviso informativo cuando el ADMIN usa su excepción.
+  const adminExcedePortatiles = totalPortatiles > 1 && esAdmin;
   const sedeColab = sedes.find((s) => s.id === colab?.sede_id)?.nombre ?? colab?.sede;
 
   const buscar = async () => {
@@ -76,6 +89,7 @@ export function Asignar() {
   const finalizar = async () => {
     if (!colab) return;
     if (!seleccionados.length) { toast.error(t('assign.noneSelected')); return; }
+    if (excedePortatiles) { toast.error(t('assign.requiereAdmin')); return; }
     const firma = sigRef.current?.toDataURL();
     if (!firma) { toast.error(t('common.signHere')); return; }
     setBusy(true);
@@ -103,19 +117,10 @@ export function Asignar() {
         });
       }
 
-      if (sendMail && c.correo) {
-        try {
-          const b64 = await blobToBase64(blob);
-          await supabase.functions.invoke('enviar-acta', {
-            body: {
-              acta_id: acta.id, correo_destino: c.correo,
-              asunto: `Acta de entrega ${acta.consecutivo}`, pdf_base64: b64,
-              nombre_archivo: `${acta.consecutivo}.pdf`,
-            },
-          });
-        } catch { /* noop */ }
-      }
-
+      // El envío del acta por correo se retiró: la Edge Function `enviar-acta`
+      // no está desplegada y el checkbox prometía un correo que nunca salía.
+      // Cuando se despliegue (deploy + secrets de Resend), restaurar aquí la
+      // llamada Y avisar con un toast si falla, en vez de tragarse el error.
       abrirBlob(blob, `${acta.consecutivo || 'acta'}.pdf`);
       toast.success(t('assign.done'));
       setStep(0); setCedula(''); setBuscado(false); setColab(null);
@@ -251,9 +256,23 @@ export function Asignar() {
               </div>
             )}
 
+            {excedePortatiles && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                className="mt-4 p-4 rounded-2xl bg-danger/8 border border-danger/20 text-sm text-red-600 dark:text-danger">
+                {portatilesActuales > 0 ? t('assign.unPortatilYaAsignado') : t('assign.dosPortatilesSeleccionados')}
+                {' '}{t('assign.requiereAdmin')}
+              </motion.div>
+            )}
+            {adminExcedePortatiles && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                className="mt-4 p-4 rounded-2xl bg-warning/8 border border-warning/20 text-sm text-amber-600 dark:text-warning">
+                {t('assign.adminOverridePortatil')}
+              </motion.div>
+            )}
+
             <div className="flex justify-between mt-6">
               <button className="btn-secondary" onClick={() => setStep(0)}><ArrowLeft size={16} /> {t('common.back')}</button>
-              <button className="btn-primary" disabled={!seleccionados.length} onClick={() => setStep(2)}>{t('common.next')} <ArrowRight size={16} /></button>
+              <button className="btn-primary" disabled={!seleccionados.length || excedePortatiles} onClick={() => setStep(2)}>{t('common.next')} <ArrowRight size={16} /></button>
             </div>
           </motion.div>
         )}
@@ -285,11 +304,6 @@ export function Asignar() {
             </button>
 
             <SignaturePad ref={sigRef} />
-
-            <label className="flex items-center gap-2 mt-4 text-sm cursor-pointer">
-              <input type="checkbox" checked={sendMail} onChange={(e) => setSendMail(e.target.checked)} className="accent-brand-500 w-4 h-4" />
-              <Mail size={15} /> {t('assign.sendCopy')}
-            </label>
 
             <div className="flex justify-between mt-6">
               <Button icon={ArrowLeft} disabled={busy} onClick={() => setStep(1)}>{t('common.back')}</Button>

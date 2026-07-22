@@ -40,6 +40,14 @@ export function exportReporteProveedor(proveedor: string, equipos: Equipo[]) {
   XLSX.writeFile(wb, `devolucion_${proveedor}.xlsx`);
 }
 
+/** Exporta filas ya formateadas (clave = encabezado de columna) a un .xlsx. */
+export function exportRowsExcel(rows: Record<string, unknown>[], sheet: string, filename: string) {
+  const ws = XLSX.utils.json_to_sheet(rows);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheet.slice(0, 30) || 'Hoja1');
+  XLSX.writeFile(wb, filename);
+}
+
 export interface ImportRow extends Partial<Equipo> { _raw?: Record<string, unknown>; }
 
 export async function importEquiposExcel(file: File): Promise<ImportRow[]> {

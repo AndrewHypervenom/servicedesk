@@ -1,15 +1,15 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, animate } from 'framer-motion';
 import {
-  ArrowRight, CheckCircle2, FileSpreadsheet, Loader2, RotateCcw, ShieldAlert, Upload,
+  ArrowRight, Check, CheckCircle2, FileSpreadsheet, Loader2, RotateCcw, Upload,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toast';
 import { listSedes } from '@/lib/api';
 import { analizarLibro } from '@/lib/importador/analizar';
 import { aplicarImportacion } from '@/lib/importador/aplicar';
-import { normCedula } from '@/lib/importador/normalizar';
+import { normCedula, normNombre } from '@/lib/importador/normalizar';
 import type {
   ProgresoAplicacion, Resoluciones, ResultadoAnalisis, ResultadoAplicacion,
 } from '@/lib/importador/tipos';
@@ -31,6 +31,19 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onImportado: () => void;
+}
+
+/** Cifra que cuenta desde cero al aparecer, para que el cierre se sienta ganado. */
+function Contador({ hasta }: { hasta: number }) {
+  const [v, setV] = useState(0);
+  useEffect(() => {
+    const c = animate(0, hasta, {
+      duration: 0.9, ease: [0.16, 1, 0.3, 1],
+      onUpdate: (x) => setV(Math.round(x)),
+    });
+    return () => c.stop();
+  }, [hasta]);
+  return <>{v}</>;
 }
 
 export function ImportarModal({ open, onClose, onImportado }: Props) {
@@ -76,8 +89,14 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
         new Promise((ok) => setTimeout(ok, duracionAnimacion())),
       ]);
       setAnalisis(r);
-      // Una sola sede disponible: no hay nada que preguntar.
-      setRes({ ...RES_INICIAL, sedeId: sedes.length === 1 ? sedes[0].id : null });
+      // Si la ubicación del archivo coincide con una sede ("BOGOTA" → "Bogotá"),
+      // se preselecciona; con una sola sede tampoco hay nada que preguntar.
+      const ubicaciones = r.ubicaciones.map(normNombre);
+      const coinciden = sedes.filter((s) => ubicaciones.includes(normNombre(s.nombre)));
+      setRes({
+        ...RES_INICIAL,
+        sedeId: sedes.length === 1 ? sedes[0].id : coinciden.length === 1 ? coinciden[0].id : null,
+      });
       setPaso('revision');
     } catch (e) {
       toast.error(`No se pudo leer el archivo: ${(e as Error).message}`);
@@ -90,6 +109,31 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
   );
   const faltanConflictos = !!analisis?.conflictos.some((c) => res.conflictos[c.serial] === undefined);
   const listoParaAplicar = !!analisis && !!res.sedeId && !faltanCedulas && !faltanConflictos;
+
+  /** Lo que el usuario aún debe resolver, como pasos que se van tachando.
+   *  Cada uno lleva al bloque donde se resuelve, para no obligar a buscarlo. */
+  const requisitos = useMemo(() => {
+    if (!analisis) return [];
+    const cedulasListas = analisis.pendientesCedula.filter(
+      (p) => normCedula(res.cedulas[p.nombre] ?? '') !== null,
+    ).length;
+    const conflictosListos = analisis.conflictos.filter(
+      (c) => res.conflictos[c.serial] !== undefined,
+    ).length;
+    return [
+      { id: 'imp-sede', label: 'Sede destino', listo: !!res.sedeId },
+      analisis.pendientesCedula.length > 0 && {
+        id: 'imp-cedulas',
+        label: `Cédulas ${cedulasListas}/${analisis.pendientesCedula.length}`,
+        listo: cedulasListas === analisis.pendientesCedula.length,
+      },
+      analisis.conflictos.length > 0 && {
+        id: 'imp-conflictos',
+        label: `Conflictos ${conflictosListos}/${analisis.conflictos.length}`,
+        listo: conflictosListos === analisis.conflictos.length,
+      },
+    ].filter((r): r is { id: string; label: string; listo: boolean } => !!r);
+  }, [analisis, res]);
 
   /** Lo que realmente se va a escribir, ya descontado todo lo que el análisis descarta. */
   const previo = useMemo(() => {
@@ -214,31 +258,78 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
           <motion.div key="revision" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
             <PanelRevision analisis={analisis} sedes={sedes} res={res} onRes={setRes} />
 
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-6 pt-5 border-t border-ink-100 dark:border-white/5">
-              <div className="flex-1 text-xs">
-                {listoParaAplicar ? (
-                  <span className="text-ink-400">
-                    Se importarán {previo.equipos} equipos, {previo.colaboradores} colaboradores y{' '}
-                    {previo.movimientos} movimientos.
-                  </span>
-                ) : (
-                  <span className="text-danger flex items-center gap-1.5">
-                    <ShieldAlert size={13} />
-                    {!res.sedeId
-                      ? 'Elige la sede destino.'
-                      : faltanCedulas
-                        ? 'Completa las cédulas que faltan.'
-                        : 'Resuelve los seriales en conflicto.'}
-                  </span>
-                )}
+            <div className="mt-6 pt-5 border-t border-ink-100 dark:border-white/5">
+              {/* Los pasos pendientes, tachables y clicables: cada chip lleva
+                  al bloque donde se resuelve, en vez de un solo mensaje de error. */}
+              <div className="flex flex-wrap items-center gap-2 mb-3">
+                {requisitos.map((r) => (
+                  <motion.button
+                    key={r.id}
+                    layout
+                    onClick={() => document.getElementById(r.id)?.scrollIntoView({ behavior: 'smooth', block: 'center' })}
+                    whileTap={{ scale: 0.96 }}
+                    className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium border transition-colors ${
+                      r.listo
+                        ? 'border-brand-500/30 bg-brand-500/10 text-brand-600 dark:text-brand-400'
+                        : 'border-ink-200 dark:border-white/10 text-ink-500 dark:text-ink-300 hover:border-brand-400/60'
+                    }`}
+                  >
+                    <AnimatePresence mode="wait" initial={false}>
+                      {r.listo ? (
+                        <motion.span key="ok" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}>
+                          <Check size={12} />
+                        </motion.span>
+                      ) : (
+                        <motion.span
+                          key="pend" initial={{ scale: 0 }} animate={{ scale: 1 }} exit={{ scale: 0 }}
+                          className="w-3 h-3 rounded-full border-[1.5px] border-current opacity-60"
+                        />
+                      )}
+                    </AnimatePresence>
+                    {r.label}
+                  </motion.button>
+                ))}
+                <div className="flex-1 min-w-[8rem] h-1 rounded-full bg-ink-100 dark:bg-white/10 overflow-hidden">
+                  <motion.div
+                    className="h-full rounded-full"
+                    style={{ background: 'linear-gradient(90deg, #10D451, #B33D9E)' }}
+                    initial={false}
+                    animate={{ width: `${(requisitos.filter((r) => r.listo).length / Math.max(requisitos.length, 1)) * 100}%` }}
+                    transition={{ type: 'spring', damping: 24, stiffness: 200 }}
+                  />
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={reiniciar} className="btn-secondary">
-                  <RotateCcw size={15} /> Otro archivo
-                </button>
-                <button onClick={aplicar} disabled={!listoParaAplicar} className="btn-primary">
-                  Importar <ArrowRight size={15} />
-                </button>
+
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                <div className="flex-1 text-xs">
+                  <AnimatePresence mode="wait" initial={false}>
+                    {listoParaAplicar ? (
+                      <motion.span
+                        key="listo" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                        className="text-ink-400"
+                      >
+                        Todo resuelto: se importarán <strong className="text-ink-600 dark:text-ink-200">{previo.equipos}</strong> equipos,{' '}
+                        <strong className="text-ink-600 dark:text-ink-200">{previo.colaboradores}</strong> colaboradores y{' '}
+                        <strong className="text-ink-600 dark:text-ink-200">{previo.movimientos}</strong> movimientos.
+                      </motion.span>
+                    ) : (
+                      <motion.span
+                        key="falta" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                        className="text-ink-400"
+                      >
+                        Nada se guarda todavía: completa los pasos de arriba para habilitar la importación.
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={reiniciar} className="btn-secondary">
+                    <RotateCcw size={15} /> Otro archivo
+                  </button>
+                  <button onClick={aplicar} disabled={!listoParaAplicar} className="btn-primary shine">
+                    Importar <ArrowRight size={15} />
+                  </button>
+                </div>
               </div>
             </div>
           </motion.div>
@@ -292,7 +383,7 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
                   transition={{ delay: 0.2 + i * 0.08 }}
                   className="card p-3 text-center"
                 >
-                  <div className="text-xl font-semibold tabular-nums">{n as number}</div>
+                  <div className="text-xl font-semibold tabular-nums"><Contador hasta={n as number} /></div>
                   <div className="text-xs text-ink-400 mt-0.5">{label as string}</div>
                 </motion.div>
               ))}

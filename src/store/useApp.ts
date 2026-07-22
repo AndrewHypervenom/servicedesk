@@ -65,10 +65,15 @@ export const useApp = create<AppState>((set, get) => ({
   updatePerfil: async (patch) => {
     const actual = get().perfil;
     if (!actual) return;
-    const nuevo = { ...actual, ...patch };
-    set({ perfil: nuevo });
-    const { error } = await supabase.from('perfiles').update(patch).eq('id', actual.id);
+    // Escribir primero y confirmar contra la fila devuelta. Si la RLS impide la
+    // escritura, PostgREST responde 403 o actualiza 0 filas (data vacío): en
+    // ambos casos lanzamos, para no dejar el store mostrando un cambio que la
+    // base nunca guardó (antes se hacía de forma optimista y la UI mentía).
+    const { data, error } = await supabase
+      .from('perfiles').update(patch).eq('id', actual.id).select().maybeSingle();
     if (error) throw error;
+    if (!data) throw new Error(i18n.t('settings.profileSaveDenied'));
+    set({ perfil: { ...actual, ...(data as Perfil) } });
   },
 
   signIn: async (email, pass) => {
