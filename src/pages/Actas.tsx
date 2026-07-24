@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { FileSignature, ExternalLink, CheckCircle2, Mail, Printer, PenLine, Upload, FileCheck2, Eye, SearchX } from 'lucide-react';
-import { listActas, listEquipos, listColaboradores, updateActa, subirPdfActa, subirActaFirmada } from '@/lib/api';
+import { FileSignature, ExternalLink, CheckCircle2, Mail, Printer, PenLine, FileCheck2, Eye, SearchX } from 'lucide-react';
+import { listActas, listEquipos, listColaboradores, updateActa, subirPdfActa } from '@/lib/api';
 import { generarActaPdf, abrirBlob, imprimirBlob, type ActaItem } from '@/lib/pdf';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchInput } from '@/components/ui/SearchInput';
@@ -11,6 +11,7 @@ import { Modal } from '@/components/ui/Modal';
 import { SignaturePad, type SignatureHandle } from '@/components/ui/SignaturePad';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Tooltip } from '@/components/ui/Tooltip';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { fmtDate } from '@/lib/format';
@@ -28,8 +29,6 @@ export function Actas() {
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const sigRef = useRef<SignatureHandle>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const actaSubidaRef = useRef<Acta | null>(null);
 
   const equiposById = useMemo(() => new Map(equipos.map((e) => [e.id, e])), [equipos]);
   const colabByCedula = useMemo(() => new Map(colaboradores.map((c) => [c.cedula, c])), [colaboradores]);
@@ -111,35 +110,9 @@ export function Actas() {
     finally { setBusy(false); }
   };
 
-  const pedirArchivo = (a: Acta) => {
-    actaSubidaRef.current = a;
-    fileRef.current?.click();
-  };
-
-  const subirArchivo = async (file: File | undefined) => {
-    const a = actaSubidaRef.current;
-    if (!a || !file) return;
-    setBusy(true);
-    try {
-      await subirActaFirmada(a.id, file);
-      toast.success(t('acta.uploadDone'));
-      refetch();
-    } catch (e: any) { toast.error(e.message ?? t('common.error')); }
-    finally {
-      setBusy(false);
-      if (fileRef.current) fileRef.current.value = '';
-      actaSubidaRef.current = null;
-    }
-  };
-
   return (
     <div>
       <PageHeader title={t('acta.title')} subtitle={t('acta.subtitle')} icon={FileSignature} />
-
-      <input
-        ref={fileRef} type="file" accept="application/pdf,image/*" className="hidden"
-        onChange={(e) => subirArchivo(e.target.files?.[0])}
-      />
 
       {!isLoading && actas.length > 0 && (
         <div className="card p-4 mb-5">
@@ -186,25 +159,35 @@ export function Actas() {
                   <td className="px-4 py-3 text-ink-500">{fmtDate(a.creado_en?.slice(0, 10), i18n.language)}</td>
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-1">
-                      <button className="btn-ghost !p-2" title={t('common.view')} onClick={() => ver(a)}><Eye size={16} /></button>
-                      <button className="btn-ghost !p-2" title={t('common.print')} onClick={() => imprimir(a)}><Printer size={16} /></button>
+                      <Tooltip
+                        label={t('acta.tipView')}
+                        hint={a.archivo_firmado_url ? t('acta.tipViewSignedHint') : t('acta.tipViewHint')}
+                      >
+                        <button className="btn-ghost !p-2" aria-label={t('acta.tipView')} onClick={() => ver(a)}><Eye size={16} /></button>
+                      </Tooltip>
+                      <Tooltip label={t('acta.tipPrint')} hint={t('acta.tipPrintHint')}>
+                        <button className="btn-ghost !p-2" aria-label={t('acta.tipPrint')} onClick={() => imprimir(a)}><Printer size={16} /></button>
+                      </Tooltip>
                       {!a.firmado && (
-                        <button className="btn-ghost !p-2 text-brand-600" title={t('acta.sign')} onClick={() => setFirmando(a)}>
-                          <PenLine size={16} />
-                        </button>
+                        <Tooltip label={t('acta.sign')} hint={t('acta.tipSignHint')}>
+                          <button className="btn-ghost !p-2 text-brand-600" aria-label={t('acta.sign')} onClick={() => setFirmando(a)}>
+                            <PenLine size={16} />
+                          </button>
+                        </Tooltip>
                       )}
-                      <button className="btn-ghost !p-2" title={t('acta.uploadSigned')} disabled={busy} onClick={() => pedirArchivo(a)}>
-                        <Upload size={16} />
-                      </button>
                       {a.archivo_firmado_url && (
-                        <a href={a.archivo_firmado_url} target="_blank" rel="noreferrer" className="btn-ghost !p-2 text-emerald-600" title={t('acta.signedFile')}>
-                          <FileCheck2 size={16} />
-                        </a>
+                        <Tooltip label={t('acta.signedFile')} hint={t('acta.tipSignedFileHint')}>
+                          <a href={a.archivo_firmado_url} target="_blank" rel="noreferrer" aria-label={t('acta.signedFile')} className="btn-ghost !p-2 text-emerald-600">
+                            <FileCheck2 size={16} />
+                          </a>
+                        </Tooltip>
                       )}
                       {a.pdf_url && (
-                        <a href={a.pdf_url} target="_blank" rel="noreferrer" className="btn-ghost !p-2" title="PDF">
-                          <ExternalLink size={16} />
-                        </a>
+                        <Tooltip label={t('acta.tipPdf')} hint={t('acta.tipPdfHint')}>
+                          <a href={a.pdf_url} target="_blank" rel="noreferrer" aria-label={t('acta.tipPdf')} className="btn-ghost !p-2">
+                            <ExternalLink size={16} />
+                          </a>
+                        </Tooltip>
                       )}
                     </div>
                   </td>
