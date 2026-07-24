@@ -10,7 +10,7 @@ import {
 import { getEquipo, trazabilidad, getColaborador } from '@/lib/api';
 import { CambiarEstadoModal } from '@/components/CambiarEstadoModal';
 import { equipoQrDataUrl, imprimirEtiquetaQr, descargarQr } from '@/lib/qr';
-import { fmtDate, diasRestantes } from '@/lib/format';
+import { fmtDate, diasRestantes, fmtSerial } from '@/lib/format';
 import { EstadoBadge, FisicoBadge, Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
@@ -79,7 +79,7 @@ export function EquipoDetalle() {
   const dias = diasRestantes(equipo.fecha_vencimiento_contrato);
 
   const infoRows: [string, React.ReactNode][] = [
-    [t('equipo.serial'), <span className="font-mono">{equipo.serial}</span>],
+    [t('equipo.serial'), <span className="font-mono">{fmtSerial(equipo.serial)}</span>],
     [t('equipo.tipo'), t(`tipo.${equipo.tipo}`)],
     [t('equipo.propiedad'), <span>{t(`propiedad.${equipo.propiedad}`)}{equipo.proveedor_propietario && ` · ${equipo.proveedor_propietario}`}</span>],
     [t('equipo.fechaIngreso'), fmtDate(equipo.fecha_ingreso, i18n.language)],

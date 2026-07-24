@@ -16,6 +16,15 @@ import { CoeditBanner } from '@/components/presence';
 import type { Equipo } from '@/types';
 
 const TIPOS = ['PORTATIL', 'ESCRITORIO', 'CELULAR', 'MONITOR', 'PERIFERICO', 'BASE_RECALENTAMIENTO', 'CARGADOR', 'OTRO'];
+
+// Sin dato: vacío o el literal N/A que escribe el usuario (o el botón).
+const esNA = (v?: string | null) => {
+  const s = (v ?? '').trim().toUpperCase();
+  return s === '' || s === 'N/A' || s === 'NA';
+};
+// Lo que viaja a la base: 'N/A' no puede guardarse tal cual porque `serial`
+// tiene índice único y chocaría al segundo equipo sin serial. Null sí se repite.
+const serialAGuardar = (v?: string | null) => (esNA(v) ? null : v!.trim());
 const FISICOS = ['BUENO', 'REGULAR', 'CON_FALLA', 'DANADO'];
 const PROPIEDADES = ['EMPRESA', 'PROYECTO', 'RENTADO', 'COMODATO'];
 
@@ -75,6 +84,23 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
   }, [colaboradores]);
   const [f, setF] = useState<Partial<Equipo>>({});
   const set = (k: keyof Equipo, v: any) => setF((s) => ({ ...s, [k]: v }));
+  const esPortatil = (f.tipo ?? 'PORTATIL') === 'PORTATIL';
+
+  // Solo el portátil se identifica por modelo y serial; monitores, cargadores,
+  // periféricos… no traen ese dato, así que al cambiar de tipo se dejan en N/A
+  // (y al volver a portátil se limpian para que se escriban de verdad). Solo se
+  // toca lo que está vacío o en N/A: nunca pisa un dato escrito a mano.
+  const cambiarTipo = (v: string) => setF((s) => {
+    const n: Partial<Equipo> = { ...s, tipo: v as Equipo['tipo'] };
+    if (v !== 'PORTATIL') {
+      if (esNA(s.linea_modelo)) n.linea_modelo = 'N/A';
+      if (esNA(s.serial)) n.serial = 'N/A';
+    } else {
+      if (esNA(s.linea_modelo)) n.linea_modelo = '';
+      if (esNA(s.serial)) n.serial = '';
+    }
+    return n;
+  });
   const qc = useQueryClient();
 
   // Reinicia el formulario cada vez que se abre: con los datos del equipo (editar) o vacío (crear).
@@ -95,9 +121,10 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
 
   const guardar = useMutation({
     mutationFn: async () => {
-      if (!editando) return createEquipo(f);
+      if (!editando) return createEquipo({ ...f, serial: serialAGuardar(f.serial) });
       const patch: Partial<Equipo> = {};
       for (const k of EDITABLES) if (f[k] !== undefined) (patch as any)[k] = f[k];
+      if (patch.serial !== undefined) patch.serial = serialAGuardar(patch.serial);
       await updateEquipo(equipo!.id, patch);
       if (f.estado_asignacion && f.estado_asignacion !== equipo!.estado_asignacion) {
         await cambiarEstadoEquipo({ equipoId: equipo!.id, estadoNuevo: f.estado_asignacion });
@@ -132,7 +159,8 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
   });
 
   const save = () => {
-    if (!f.marca || !f.linea_modelo || !f.serial) { toast.error(t('form.requiredFields')); return; }
+    // El serial solo se exige al portátil; en el resto de tipos queda en N/A.
+    if (!f.marca || !f.linea_modelo || (esPortatil && !f.serial)) { toast.error(t('form.requiredFields')); return; }
     guardar.mutate();
   };
 
@@ -192,28 +220,23 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
         <Field label={t('equipo.modelo')} k="linea_modelo" f={f} set={set} req />
         <div className="sm:col-span-2"><Field label={t('equipo.descripcion')} k="descripcion_completa" f={f} set={set} /></div>
         <div>
-          <label className="label">{t('equipo.serial')}<span className="text-danger"> *</span></label>
-          <div className="flex gap-2">
-            <input
-              className="input flex-1"
-              value={f.serial ?? ''}
-              onChange={(e) => set('serial', e.target.value)}
-            />
-            <button
-              type="button"
-              onClick={() => set('serial', 'N/A')}
-              className="shrink-0 rounded-lg border border-ink-200 dark:border-white/15 px-3 text-sm font-medium text-ink-600 dark:text-ink-300 hover:bg-ink-50 dark:hover:bg-white/5"
-              title={t('form.serialNAHint')}
-            >
-              N/A
-            </button>
-          </div>
+          <label className="label">{t('equipo.serial')}{esPortatil && <span className="text-danger"> *</span>}</label>
+          <input
+            className="input"
+            value={f.serial ?? ''}
+            onChange={(e) => set('serial', e.target.value)}
+          />
+          {!esPortatil && (
+            <p className="text-[11px] text-ink-400 mt-1 leading-snug">
+              Este tipo de equipo se guarda sin serial. Si lo tiene, escríbelo.
+            </p>
+          )}
         </div>
         <div>
           <label className="label">{t('equipo.tipo')}</label>
           <Select
             value={f.tipo ?? ''}
-            onChange={(v) => set('tipo', v)}
+            onChange={cambiarTipo}
             options={TIPOS.map((x) => ({ value: x, label: t(`tipo.${x}`), description: t(`tipoDesc.${x}`) }))}
           />
         </div>

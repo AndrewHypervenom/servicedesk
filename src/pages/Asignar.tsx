@@ -6,6 +6,7 @@ import { UserPlus, Search, Check, ArrowRight, ArrowLeft, FileSignature, Eye, Plu
 import { listEquipos, getColaborador, asignarEquipo, createActa, updateActa, deleteActa, subirPdfActa, subirActaFirmada, listSedes } from '@/lib/api';
 import { generarActaPdf, abrirBlob, type ActaItem } from '@/lib/pdf';
 import { ACTA_ASIGNACION } from '@/lib/actaTemplates';
+import { fmtSerial } from '@/lib/format';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FirmaActa, type FirmaActaHandle } from '@/components/ui/FirmaActa';
@@ -210,7 +211,7 @@ export function Asignar() {
 
   const steps = [t('assign.step1'), t('assign.step2multi'), t('assign.step3')];
   const filtered = disponibles.filter((e) =>
-    !q || [e.serial, e.marca, e.linea_modelo, e.codigo_qr, e.tipo].some((v) => v?.toLowerCase().includes(q.toLowerCase())));
+    !q || [fmtSerial(e.serial), e.marca, e.linea_modelo, e.codigo_qr, e.tipo].some((v) => v?.toLowerCase().includes(q.toLowerCase())));
 
   const dato = (label: string, value?: string | null) => (
     <div>
@@ -309,7 +310,7 @@ export function Asignar() {
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{e.marca} {e.linea_modelo} <span className="text-xs text-ink-400">· {e.tipo}</span></div>
-                      <div className="text-xs text-ink-400 font-mono">{e.serial} · {e.codigo_qr}</div>
+                      <div className="text-xs text-ink-400 font-mono">{fmtSerial(e.serial)} · {e.codigo_qr}</div>
                     </div>
                     <EstadoBadge estado={e.estado_asignacion} label={t(`estadoAsig.${e.estado_asignacion}`)} />
                   </button>
@@ -325,7 +326,7 @@ export function Asignar() {
                 {seleccionados.map((e) => (
                   <div key={e.id} className="p-3 rounded-xl bg-ink-50 dark:bg-white/5">
                     <div className="flex items-center justify-between gap-2 mb-2">
-                      <div className="text-sm font-medium truncate">{e.marca} {e.linea_modelo} <span className="text-xs text-ink-400 font-mono">· {e.serial}</span></div>
+                      <div className="text-sm font-medium truncate">{e.marca} {e.linea_modelo} <span className="text-xs text-ink-400 font-mono">· {fmtSerial(e.serial)}</span></div>
                       <button className="btn-ghost !p-1.5" onClick={() => toggleEquipo(e)}><X size={14} /></button>
                     </div>
                     <input className="input !py-1.5 text-sm" placeholder={t('assign.itemObs')}
@@ -364,7 +365,7 @@ export function Asignar() {
               <div className="font-medium mb-1">→ {colab?.nombre} · {colab?.proyecto || '—'}</div>
               {seleccionados.map((e) => (
                 <div key={e.id} className="text-ink-500 text-xs flex items-center gap-1.5">
-                  <Plus size={11} /> {e.marca} {e.linea_modelo} · <span className="font-mono">{e.serial}</span>
+                  <Plus size={11} /> {e.marca} {e.linea_modelo} · <span className="font-mono">{fmtSerial(e.serial)}</span>
                 </div>
               ))}
             </div>

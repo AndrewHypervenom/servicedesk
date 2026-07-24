@@ -14,7 +14,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
-import { fmtDate } from '@/lib/format';
+import { fmtDate, fmtSerial } from '@/lib/format';
 import { useApp } from '@/store/useApp';
 import type { Acta } from '@/types';
 
@@ -39,7 +39,7 @@ export function Actas() {
     return actas.filter((a) => {
       const colab = a.cedula_colaborador ? colabByCedula.get(a.cedula_colaborador) : null;
       const seriales = (a.items?.length ? a.items.map((i) => i.equipo_id) : a.equipo_id ? [a.equipo_id] : [])
-        .map((id) => equiposById.get(id)?.serial ?? '');
+        .map((id) => fmtSerial(equiposById.get(id)?.serial));
       const tipoLabel = t(`movimiento.${a.tipo === 'ENTREGA' ? 'ASIGNACION' : 'DEVOLUCION_COLABORADOR'}`);
       return [a.consecutivo, a.cedula_colaborador, colab?.nombre, tipoLabel, ...seriales]
         .some((v) => v?.toLowerCase().includes(term));

@@ -6,6 +6,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { listProveedores, listEquipos } from '@/lib/api';
 import { exportReporteProveedor } from '@/lib/excel';
+import { fmtSerial } from '@/lib/format';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select } from '@/components/ui/Select';
 import { SearchInput } from '@/components/ui/SearchInput';
@@ -23,7 +24,7 @@ export function ReporteProveedor() {
     const term = q.trim().toLowerCase();
     if (!term) return lista;
     return lista.filter((e) =>
-      [e.serial, e.marca, e.linea_modelo, e.codigo_interno, e.numero_contrato]
+      [fmtSerial(e.serial), e.marca, e.linea_modelo, e.codigo_interno, e.numero_contrato]
         .some((v) => v != null && String(v).toLowerCase().includes(term)));
   }, [lista, q]);
 
@@ -35,7 +36,7 @@ export function ReporteProveedor() {
     autoTable(doc, {
       startY: 32,
       head: [['#', 'Serial', 'Marca', 'Modelo', 'Cód. interno', 'Contrato', 'Estado']],
-      body: lista.map((e, i) => [i + 1, e.serial, e.marca, e.linea_modelo, e.codigo_interno ?? '', e.numero_contrato ?? '', e.estado_asignacion]),
+      body: lista.map((e, i) => [i + 1, fmtSerial(e.serial), e.marca, e.linea_modelo, e.codigo_interno ?? '', e.numero_contrato ?? '', e.estado_asignacion]),
       styles: { fontSize: 8 }, headStyles: { fillColor: [10, 132, 255] },
     });
     doc.save(`devolucion_${prov}.pdf`);
@@ -96,7 +97,7 @@ export function ReporteProveedor() {
                 {visibles.map((e, i) => (
                   <tr key={e.id} className="border-b border-ink-50 dark:border-white/5">
                     <td className="px-5 py-2 text-ink-400">{i + 1}</td>
-                    <td className="px-4 py-2 font-mono text-xs">{e.serial}</td>
+                    <td className="px-4 py-2 font-mono text-xs">{fmtSerial(e.serial)}</td>
                     <td className="px-4 py-2">{e.marca} {e.linea_modelo}</td>
                     <td className="px-4 py-2">{e.codigo_interno ?? '—'}</td>
                     <td className="px-4 py-2">{e.numero_contrato ?? '—'}</td>

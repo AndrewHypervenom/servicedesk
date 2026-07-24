@@ -38,7 +38,9 @@ export interface Equipo {
   marca: string;
   linea_modelo: string;
   descripcion_completa?: string | null;
-  serial: string;
+  // Null cuando el equipo no tiene serial que registrar (todo lo que no es
+  // portátil se guarda así): el índice único admite varios nulos, 'N/A' no.
+  serial: string | null;
   tipo: TipoActivo;
   estado_fisico: EstadoFisico;
   estado_asignacion: EstadoAsignacion;

@@ -19,7 +19,7 @@ import { useViewingPresence } from '@/lib/presence/hooks';
 import { CoeditBanner } from '@/components/presence';
 import { equiposDeColaborador } from '@/lib/api';
 import { antiguedadTexto, colorEstatus, estatusLegible } from '@/lib/colaboradores/estatus';
-import { fmtDate, initials } from '@/lib/format';
+import { fmtDate, initials, fmtSerial } from '@/lib/format';
 import type { Colaborador } from '@/types';
 
 interface Props {
@@ -169,7 +169,7 @@ export function FichaColaborador({ colaborador: c, sede, onClose, onEditar }: Pr
                   <Laptop size={15} className="text-ink-400 shrink-0" />
                   <span className="min-w-0 truncate">
                     <strong className="font-medium">{e.marca} {e.linea_modelo}</strong>
-                    <span className="text-ink-400"> · {e.serial}</span>
+                    <span className="text-ink-400"> · {fmtSerial(e.serial)}</span>
                   </span>
                   <span className="ml-auto badge bg-brand-500/10 text-brand-600 dark:text-brand-400 shrink-0">
                     {t(`estadoAsig.${e.estado_asignacion}`)}

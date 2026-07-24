@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Check, AlertTriangle } from 'lucide-react';
 import { cambiarEstadoEquipo } from '@/lib/api';
 import { transicionesEstado } from '@/lib/estados';
+import { fmtSerial } from '@/lib/format';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
@@ -49,7 +50,7 @@ export function CambiarEstadoModal({ equipo, onClose, onSaved }: {
   return (
     <Modal open={!!equipo} onClose={cerrar} size="sm"
       title={t('estadoCambio.titulo')}
-      subtitle={equipo ? `${equipo.marca} ${equipo.linea_modelo} · ${equipo.serial}` : undefined}>
+      subtitle={equipo ? `${equipo.marca} ${equipo.linea_modelo} · ${fmtSerial(equipo.serial)}` : undefined}>
       {coeditores.length > 0 && <CoeditBanner peers={coeditores} className="mb-4" />}
 
       {bloqueado ? (

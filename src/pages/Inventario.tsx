@@ -7,7 +7,7 @@ import { BotonBorrar } from '@/components/ui/BotonBorrar';
 import { listEquipos } from '@/lib/api';
 import { exportEquiposExcel } from '@/lib/excel';
 import { descargarQr } from '@/lib/qr';
-import { diasRestantes } from '@/lib/format';
+import { diasRestantes, fmtSerial } from '@/lib/format';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select } from '@/components/ui/Select';
 import { EstadoBadge, Badge } from '@/components/ui/Badge';
@@ -93,9 +93,9 @@ export function Inventario() {
     {
       key: 'serial',
       header: t('inventory.columns.serial'),
-      sortValue: (e) => e.serial,
+      sortValue: (e) => fmtSerial(e.serial),
       className: 'font-mono text-xs',
-      cell: (e) => e.serial,
+      cell: (e) => fmtSerial(e.serial),
     },
     {
       key: 'tipo',
@@ -136,7 +136,7 @@ export function Inventario() {
           <BotonBorrar
             entidad="equipos"
             id={e.id}
-            etiqueta={`${e.marca} ${e.linea_modelo} · ${e.serial}`}
+            etiqueta={`${e.marca} ${e.linea_modelo} · ${fmtSerial(e.serial)}`}
             invalidar={['equipos', 'solicitudesPendientes']}
           />
         </>
@@ -277,7 +277,7 @@ function MobileCard({ e, onEdit }: { e: Equipo; onEdit?: (e: Equipo) => void }) 
     <Link to={`/equipo/${e.id}`} className="card p-4 flex items-center gap-3 block">
       <div className="flex-1 min-w-0">
         <div className="font-medium truncate">{e.marca} {e.linea_modelo}<VenceAlert e={e} /></div>
-        <div className="text-xs text-ink-400 font-mono">{e.serial}</div>
+        <div className="text-xs text-ink-400 font-mono">{fmtSerial(e.serial)}</div>
         <div className="flex items-center gap-2 mt-2">
           <EstadoBadge estado={e.estado_asignacion} label={t(`estadoAsig.${e.estado_asignacion}`)} />
           <Badge>{t(`tipo.${e.tipo}`)}</Badge>

@@ -6,6 +6,7 @@ import { Undo2, Search, Warehouse, Truck, FileSignature, Eye, Check, X, Plus, Pa
 import { listEquipos, listProveedores, getColaborador, devolverEquipo, createActa, updateActa, deleteActa, subirPdfActa, subirActaFirmada } from '@/lib/api';
 import { generarActaPdf, abrirBlob, type ActaItem } from '@/lib/pdf';
 import { ACTA_DEVOLUCION } from '@/lib/actaTemplates';
+import { fmtSerial } from '@/lib/format';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FirmaActa, type FirmaActaHandle } from '@/components/ui/FirmaActa';
@@ -46,7 +47,7 @@ export function Devolucion() {
   // está en bodega y no hay nada que devolver.
   const candidatos = equipos.filter((e) =>
     ['ASIGNADO', 'EN_MANTENIMIENTO'].includes(e.estado_asignacion) &&
-    (!q || [e.serial, e.marca, e.linea_modelo, e.codigo_qr, e.tipo].some((v) => v?.toLowerCase().includes(q.toLowerCase()))));
+    (!q || [fmtSerial(e.serial), e.marca, e.linea_modelo, e.codigo_qr, e.tipo].some((v) => v?.toLowerCase().includes(q.toLowerCase()))));
 
   const toggleEquipo = (e: Equipo) => {
     setSel((prev) => {
@@ -119,7 +120,7 @@ export function Devolucion() {
         colaborador: colab, tecnico: perfil?.nombre, tecnicoCedula: perfil?.cedula ?? undefined,
         firmaTecnicoDataUrl: perfil?.firma_data, novedades,
       });
-      abrirBlob(blob, `${acta.consecutivo || `acta-devolucion-${primero.serial}`}.pdf`);
+      abrirBlob(blob, `${acta.consecutivo || `acta-devolucion-${fmtSerial(primero.serial)}`}.pdf`);
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
   };
 
@@ -205,7 +206,7 @@ export function Devolucion() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{e.marca} {e.linea_modelo} <span className="text-xs text-ink-400">· {e.tipo}</span></div>
-                    <div className="text-xs text-ink-400 font-mono">{e.serial} {e.cedula_asignado && `· C.C. ${e.cedula_asignado}`}</div>
+                    <div className="text-xs text-ink-400 font-mono">{fmtSerial(e.serial)} {e.cedula_asignado && `· C.C. ${e.cedula_asignado}`}</div>
                   </div>
                   <EstadoBadge estado={e.estado_asignacion} label={t(`estadoAsig.${e.estado_asignacion}`)} />
                 </button>
@@ -224,7 +225,7 @@ export function Devolucion() {
               {seleccionados.map((e) => (
                 <div key={e.id} className="p-3 rounded-xl bg-ink-50 dark:bg-white/5">
                   <div className="flex items-center justify-between gap-2 mb-2">
-                    <div className="text-sm font-medium truncate">{e.marca} {e.linea_modelo} <span className="text-xs text-ink-400 font-mono">· {e.serial}</span></div>
+                    <div className="text-sm font-medium truncate">{e.marca} {e.linea_modelo} <span className="text-xs text-ink-400 font-mono">· {fmtSerial(e.serial)}</span></div>
                     <button className="btn-ghost !p-1.5" onClick={() => toggleEquipo(e)}><X size={14} /></button>
                   </div>
                   <input className="input !py-1.5 text-sm" placeholder={t('assign.itemObs')}
@@ -260,7 +261,7 @@ export function Devolucion() {
             <div className="p-4 rounded-2xl bg-ink-50 dark:bg-white/5 text-sm">
               {seleccionados.map((e) => (
                 <div key={e.id} className="text-ink-500 text-xs flex items-center gap-1.5">
-                  <Plus size={11} /> {e.marca} {e.linea_modelo} · <span className="font-mono">{e.serial}</span>
+                  <Plus size={11} /> {e.marca} {e.linea_modelo} · <span className="font-mono">{fmtSerial(e.serial)}</span>
                 </div>
               ))}
             </div>

@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { excelSerialToDate } from './format';
+import { excelSerialToDate, fmtSerial } from './format';
 import type { Equipo } from '@/types';
 
 export function exportEquiposExcel(equipos: Equipo[], nombre = 'inventario.xlsx') {
@@ -7,7 +7,7 @@ export function exportEquiposExcel(equipos: Equipo[], nombre = 'inventario.xlsx'
     'Código QR': e.codigo_qr,
     Marca: e.marca,
     'Línea/Modelo': e.linea_modelo,
-    Serial: e.serial,
+    Serial: fmtSerial(e.serial),
     Tipo: e.tipo,
     'Estado físico': e.estado_fisico,
     'Estado asignación': e.estado_asignacion,
@@ -27,7 +27,7 @@ export function exportEquiposExcel(equipos: Equipo[], nombre = 'inventario.xlsx'
 export function exportReporteProveedor(proveedor: string, equipos: Equipo[]) {
   const rows = equipos.map((e, i) => ({
     '#': i + 1,
-    Serial: e.serial,
+    Serial: fmtSerial(e.serial),
     Marca: e.marca,
     Modelo: e.linea_modelo,
     'Código interno': e.codigo_interno ?? '',

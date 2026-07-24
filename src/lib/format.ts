@@ -19,6 +19,12 @@ export function fmtDateTime(d?: string | null, lng = 'es'): string {
   }
 }
 
+// Los equipos que no son portátiles se guardan sin serial (null en la base);
+// en pantalla se leen como N/A para no dejar el hueco vacío.
+export function fmtSerial(s?: string | null): string {
+  return s?.trim() || 'N/A';
+}
+
 export function diasRestantes(d?: string | null): number | null {
   if (!d) return null;
   try { return differenceInDays(parseISO(d), new Date()); } catch { return null; }

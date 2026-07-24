@@ -355,8 +355,7 @@
     "saved": "Equipo registrado correctamente",
     "updated": "Equipo actualizado correctamente",
     "requiredFields": "Complete los campos requeridos",
-    "pickOrType": "Elige uno o escribe uno nuevo",
-    "serialNAHint": "Marcar como N/A cuando el equipo no tiene serial"
+    "pickOrType": "Elige uno o escribe uno nuevo"
   },
   "assign": {
     "title": "Asignar equipo a colaborador",

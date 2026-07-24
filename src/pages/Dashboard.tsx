@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { listEquipos, recentMovimientos } from '@/lib/api';
-import { fmtDate, diasRestantes } from '@/lib/format';
+import { fmtDate, diasRestantes, fmtSerial } from '@/lib/format';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonStats, SkeletonChart, SkeletonText } from '@/components/ui/Skeleton';
@@ -227,7 +227,7 @@ export function Dashboard() {
                   <div className="w-10 h-10 rounded-xl bg-warning/15 text-amber-600 dark:text-warning grid place-items-center font-bold text-sm">{dias}</div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{e.marca} {e.linea_modelo}</div>
-                    <div className="text-xs text-ink-400">{e.serial} · {e.proveedor_propietario} · {e.numero_contrato}</div>
+                    <div className="text-xs text-ink-400">{fmtSerial(e.serial)} · {e.proveedor_propietario} · {e.numero_contrato}</div>
                   </div>
                   <div className="text-xs text-ink-400">{fmtDate(e.fecha_vencimiento_contrato, i18n.language)}</div>
                 </Link>
