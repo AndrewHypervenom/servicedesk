@@ -7,6 +7,7 @@ import { listEquipos, listProveedores, getColaborador, devolverEquipo, createAct
 import { generarActaPdf, abrirBlob, type ActaItem } from '@/lib/pdf';
 import { ACTA_DEVOLUCION } from '@/lib/actaTemplates';
 import { fmtSerial } from '@/lib/format';
+import { useTrabajoEnCurso } from '@/lib/actualizacion';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FirmaActa, type FirmaActaHandle } from '@/components/ui/FirmaActa';
@@ -38,6 +39,9 @@ export function Devolucion() {
   const borradorRef = useRef<Acta | null>(null);
 
   const seleccionados = Object.values(sel);
+
+  // Devolución a medias: mismo criterio que en Asignar (ver useTrabajoEnCurso).
+  useTrabajoEnCurso(seleccionados.length > 0, t('update.workReturn'));
 
   // Presencia: declaro edición sobre CADA equipo que estoy devolviendo (un
   // marcador por ítem) y reúno a los coeditores de cualquiera de ellos.

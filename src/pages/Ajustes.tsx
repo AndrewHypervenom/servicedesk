@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import { useTrabajoEnCurso } from '@/lib/actualizacion';
 import clsx from 'clsx';
 
 export function Ajustes() {
@@ -25,6 +26,12 @@ export function Ajustes() {
   const [pass1, setPass1] = useState('');
   const [pass2, setPass2] = useState('');
   const [savingPass, setSavingPass] = useState(false);
+
+  // Datos del perfil o contraseña escritos y sin guardar: el aviso de versión
+  // nueva no debe recargar encima y borrarlos.
+  const sinGuardar = nombre !== (perfil?.nombre ?? '') || cedula !== (perfil?.cedula ?? '')
+    || cargo !== (perfil?.cargo ?? '') || !!pass1 || !!pass2 || !!firmaSubida;
+  useTrabajoEnCurso(sinGuardar, t('update.workSettings'));
 
   const cambiarPass = async () => {
     if (pass1.length < 6) { toast.error(t('settings.passwordMin')); return; }

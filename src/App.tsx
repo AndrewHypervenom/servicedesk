@@ -5,6 +5,8 @@ import { useApp } from '@/store/useApp';
 import { puedeVerRuta } from '@/lib/roles';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ToastHost } from '@/components/ui/Toast';
+import { ActualizacionDisponible } from '@/components/ActualizacionDisponible';
+import { useDetectorDeVersion } from '@/lib/actualizacion';
 import { Login } from '@/pages/Login';
 import { DefinirPassword } from '@/pages/DefinirPassword';
 import { Dashboard } from '@/pages/Dashboard';
@@ -37,6 +39,9 @@ export default function App() {
 
   useEffect(() => { init(); }, [init]);
 
+  // Vigila si el servidor ya publicó una versión más nueva que esta pestaña.
+  useDetectorDeVersion();
+
   if (loading) {
     return (
       <div className="min-h-screen grid place-items-center bg-ink-50 dark:bg-ink-900">
@@ -48,6 +53,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <ToastHost />
+      <ActualizacionDisponible />
       {!perfil ? (
         <Routes>
           <Route path="*" element={<Login />} />

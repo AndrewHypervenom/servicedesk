@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
+import { useTrabajoEnCurso } from '@/lib/actualizacion';
 
 interface Props {
   open: boolean;
@@ -15,8 +17,13 @@ interface Props {
 const sizes = { sm: 'max-w-md', md: 'max-w-2xl', lg: 'max-w-4xl' };
 
 export function Modal({ open, onClose, title, subtitle, children, size = 'md' }: Props) {
+  const { t } = useTranslation();
   const backdrop = useRef<HTMLDivElement>(null);
   const downOnBackdrop = useRef(false);
+
+  // Cualquier modal abierto cuenta como trabajo a medias: mientras esté ahí, el
+  // aviso de versión nueva no recarga el sitio por su cuenta.
+  useTrabajoEnCurso(open, title || t('update.workDialog'));
 
   // Con el modal abierto, bloqueamos el scroll del fondo (evita el doble
   // scroll en móvil y que la página de detrás se mueva) y cerramos con Escape.

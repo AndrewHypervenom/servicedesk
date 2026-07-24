@@ -85,8 +85,20 @@ export function Escanear() {
           <div className="flex gap-2">
             <div className="relative flex-1">
               <Cpu size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
-              <input className="input pl-9" placeholder="EQ-XXXX / Serial" value={manual}
-                onChange={(e) => setManual(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCode(manual)} />
+              {/* Los códigos y seriales se manejan en mayúsculas: el campo las
+                  aplica mientras se escribe (no solo con CSS, para que lo que
+                  se busca sea exactamente lo que se ve) y el teclado del móvil
+                  arranca en mayúsculas, sin autocorrector. */}
+              <input
+                className="input pl-9 uppercase tracking-wide placeholder:normal-case"
+                placeholder="EQ-XXXX / Serial"
+                value={manual}
+                autoCapitalize="characters"
+                autoCorrect="off"
+                spellCheck={false}
+                onChange={(e) => setManual(e.target.value.toUpperCase())}
+                onKeyDown={(e) => e.key === 'Enter' && handleCode(manual)}
+              />
             </div>
             <button onClick={() => handleCode(manual)} className="btn-secondary shrink-0"><Search size={16} /></button>
           </div>

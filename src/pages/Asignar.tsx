@@ -7,6 +7,7 @@ import { listEquipos, getColaborador, asignarEquipo, createActa, updateActa, del
 import { generarActaPdf, abrirBlob, type ActaItem } from '@/lib/pdf';
 import { ACTA_ASIGNACION } from '@/lib/actaTemplates';
 import { fmtSerial } from '@/lib/format';
+import { useTrabajoEnCurso } from '@/lib/actualizacion';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FirmaActa, type FirmaActaHandle } from '@/components/ui/FirmaActa';
@@ -40,6 +41,11 @@ export function Asignar() {
   const borradorRef = useRef<Acta | null>(null);
 
   const seleccionados = Object.values(sel);
+
+  // Una entrega a medias (colaborador buscado o equipos elegidos, firma sin
+  // guardar) se perdería al recargar: se declara para que el aviso de versión
+  // nueva pida guardar en vez de actualizar solo.
+  useTrabajoEnCurso(!!colab || seleccionados.length > 0, t('update.workAssign'));
 
   // Presencia: una asignación es un flujo con un colaborador de ancla (el
   // payload lleva una sola actividad por pestaña). Declaro que estoy asignándole

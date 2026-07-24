@@ -25,9 +25,17 @@ export async function getEquipo(id: string): Promise<Equipo | null> {
 }
 
 export async function findByCode(code: string): Promise<Equipo | null> {
-  const c = code.trim().toUpperCase();
+  // Se busca sin distinguir mayúsculas: el código puede llegar tecleado, leído
+  // por la cámara o copiado de un Excel, y los seriales cargados no siempre
+  // están en mayúsculas. `eq` contra el texto en mayúsculas fallaba con ellos.
+  const c = code.trim();
+  if (!c) return null;
+  // `ilike` interpreta % y _ como comodines, y el filtro `or` corta por comas y
+  // paréntesis: se escapan los comodines y el valor va entre comillas para que
+  // la comparación siga siendo exacta, letra por letra.
+  const patron = c.replace(/([%_\\])/g, '\\$1').replace(/"/g, '');
   const { data } = await supabase.from('equipos').select('*')
-    .or(`codigo_qr.eq.${c},serial.eq.${c}`).limit(1);
+    .or(`codigo_qr.ilike."${patron}",serial.ilike."${patron}"`).limit(1);
   return (data?.[0] as Equipo) ?? null;
 }
 

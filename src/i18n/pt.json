@@ -913,5 +913,20 @@
     "passwordUpdated": "Senha atualizada",
     "passwordMin": "A senha deve ter ao menos 6 caracteres",
     "passwordMismatch": "As senhas não coincidem"
+  },
+  "update": {
+    "title": "Há uma nova versão do site",
+    "body": "Ela será recarregada sozinha para você seguir na última versão.",
+    "countdown": "Atualizando em {{s}} s",
+    "paused": "Pausado enquanto você lê",
+    "titleBusy": "Nova versão: salve antes de atualizar",
+    "bodyBusy": "Você tem trabalho não salvo. Termine de salvar e o site se atualiza sozinho; se atualizar agora, você o perde.",
+    "now": "Atualizar agora",
+    "later": "Mais tarde",
+    "keepWorking": "Continuar trabalhando",
+    "workDialog": "Uma janela aberta",
+    "workAssign": "Entrega não finalizada",
+    "workReturn": "Devolução não finalizada",
+    "workSettings": "Alterações em Configurações"
   }
 }

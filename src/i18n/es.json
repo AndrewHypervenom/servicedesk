@@ -913,5 +913,20 @@
     "passwordUpdated": "Contraseña actualizada",
     "passwordMin": "La contraseña debe tener al menos 6 caracteres",
     "passwordMismatch": "Las contraseñas no coinciden"
+  },
+  "update": {
+    "title": "Hay una versión nueva del sitio",
+    "body": "Se recargará sola para que sigas con la última versión.",
+    "countdown": "Actualizando en {{s}} s",
+    "paused": "En pausa mientras lees",
+    "titleBusy": "Versión nueva: guarda antes de actualizar",
+    "bodyBusy": "Tienes trabajo sin guardar. Termina de guardarlo y el sitio se actualizará solo; si actualizas ahora, lo pierdes.",
+    "now": "Actualizar ahora",
+    "later": "Más tarde",
+    "keepWorking": "Seguir trabajando",
+    "workDialog": "Una ventana abierta",
+    "workAssign": "Entrega sin terminar",
+    "workReturn": "Devolución sin terminar",
+    "workSettings": "Cambios en Ajustes"
   }
 }
