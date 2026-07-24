@@ -124,10 +124,71 @@ export async function cambiarEstadoEquipo(p: {
   });
 }
 
+/**
+ * Toda la planta, paginada.
+ *
+ * PostgREST corta en 1.000 filas por respuesta y la base de Talento Humano ya
+ * pasa de 1.900 personas: sin este bucle la vista mostraría una planta
+ * truncada sin avisar de nada. Se pide por bloques hasta que la página vuelve
+ * incompleta, que es la señal de que ya no queda más.
+ */
+const PAGINA_COLABS = 1000;
+
 export async function listColaboradores(): Promise<Colaborador[]> {
-  const { data } = await supabase.from('colaboradores').select('*')
-    .is('eliminado_en', null).order('nombre');
-  return (data as Colaborador[]) ?? [];
+  const todos: Colaborador[] = [];
+  for (let desde = 0; ; desde += PAGINA_COLABS) {
+    const { data, error } = await supabase.from('colaboradores').select('*')
+      .is('eliminado_en', null)
+      .order('nombre')
+      .range(desde, desde + PAGINA_COLABS - 1);
+    if (error) throw error;
+    const bloque = (data as Colaborador[]) ?? [];
+    todos.push(...bloque);
+    if (bloque.length < PAGINA_COLABS) return todos;
+  }
+}
+
+/** Equipos que hoy tiene en su poder una persona. Para su ficha. */
+export async function equiposDeColaborador(cedula: string): Promise<Equipo[]> {
+  const { data, error } = await supabase.from('equipos').select('*')
+    .eq('cedula_asignado', cedula)
+    .is('eliminado_en', null)
+    .order('creado_en', { ascending: false });
+  if (error) throw error;
+  return (data as Equipo[]) ?? [];
+}
+
+export interface ResultadoCargaBase {
+  creados: number;
+  actualizados: number;
+  recibidos: number;
+}
+
+/**
+ * Carga masiva de la base de Talento Humano.
+ *
+ * Va contra el RPC `importar_colaboradores`, que escribe todo en una
+ * transacción. Se envía por lotes para no armar un JSON de varios megas en una
+ * sola petición; cada lote es atómico por su cuenta y el progreso se reporta
+ * entre lotes para que la barra avance de verdad.
+ */
+export async function importarColaboradores(
+  filas: Record<string, unknown>[],
+  onProgreso?: (hechas: number, total: number) => void,
+  tamanoLote = 400,
+): Promise<ResultadoCargaBase> {
+  const total: ResultadoCargaBase = { creados: 0, actualizados: 0, recibidos: 0 };
+  for (let i = 0; i < filas.length; i += tamanoLote) {
+    const lote = filas.slice(i, i + tamanoLote);
+    const { data, error } = await supabase.rpc('importar_colaboradores', { p_filas: lote });
+    if (error) throw error;
+    const r = (data ?? {}) as Partial<ResultadoCargaBase>;
+    total.creados += r.creados ?? 0;
+    total.actualizados += r.actualizados ?? 0;
+    total.recibidos += r.recibidos ?? lote.length;
+    onProgreso?.(Math.min(i + tamanoLote, filas.length), filas.length);
+  }
+  return total;
 }
 export async function getColaborador(cedula: string): Promise<Colaborador | null> {
   const { data } = await supabase.from('colaboradores').select('*').eq('cedula', cedula.trim()).maybeSingle();
@@ -173,6 +234,10 @@ export async function listProveedores(): Promise<Proveedor[]> {
 }
 export async function createProveedor(p: Partial<Proveedor>): Promise<void> {
   const { error } = await supabase.from('proveedores').insert(p);
+  if (error) throw error;
+}
+export async function updateProveedor(id: string, patch: Partial<Proveedor>): Promise<void> {
+  const { error } = await supabase.from('proveedores').update(patch).eq('id', id);
   if (error) throw error;
 }
 
@@ -228,6 +293,14 @@ export async function listIntegraciones(): Promise<Integracion[]> {
 }
 export async function createIntegracion(i: Partial<Integracion>): Promise<void> {
   const { error } = await supabase.from('integraciones').insert(i);
+  if (error) throw error;
+}
+export async function updateIntegracion(id: string, patch: Partial<Integracion>): Promise<void> {
+  const { error } = await supabase.from('integraciones').update(patch).eq('id', id);
+  if (error) throw error;
+}
+export async function deleteIntegracion(id: string): Promise<void> {
+  const { error } = await supabase.from('integraciones').delete().eq('id', id);
   if (error) throw error;
 }
 
@@ -435,6 +508,10 @@ export async function createPais(nombre: string, codigo?: string): Promise<void>
   const { error } = await supabase.from('paises').insert({ nombre, codigo: codigo || null });
   if (error) throw error;
 }
+export async function updatePais(id: string, patch: { nombre?: string; codigo?: string | null }): Promise<void> {
+  const { error } = await supabase.from('paises').update(patch).eq('id', id);
+  if (error) throw error;
+}
 export async function deletePais(id: string): Promise<void> {
   const { error } = await supabase.from('paises').delete().eq('id', id);
   if (error) throw error;
@@ -447,8 +524,15 @@ export async function listSedes(): Promise<Sede[]> {
     pais_nombre: s.paises?.nombre ?? null,
   }));
 }
-export async function createSede(nombre: string, paisId: string): Promise<void> {
-  const { error } = await supabase.from('sedes').insert({ nombre, pais_id: paisId });
+export async function createSede(nombre: string, paisId: string): Promise<Sede> {
+  const { data, error } = await supabase
+    .from('sedes').insert({ nombre, pais_id: paisId }).select('*, paises(nombre)').single();
+  if (error) throw error;
+  const s = data as any;
+  return { id: s.id, nombre: s.nombre, pais_id: s.pais_id, creado_en: s.creado_en, pais_nombre: s.paises?.nombre ?? null };
+}
+export async function updateSede(id: string, patch: { nombre?: string; pais_id?: string }): Promise<void> {
+  const { error } = await supabase.from('sedes').update(patch).eq('id', id);
   if (error) throw error;
 }
 export async function deleteSede(id: string): Promise<void> {

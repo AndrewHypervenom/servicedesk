@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { Trans, useTranslation } from 'react-i18next';
 import { Trash2, AlertTriangle, Loader2, EyeOff } from 'lucide-react';
 import { Modal } from './Modal';
 import { toast } from './Toast';
@@ -19,6 +20,7 @@ interface Props {
 }
 
 export function BotonBorrar({ entidad, id, etiqueta, invalidar, className }: Props) {
+  const { t } = useTranslation();
   const { perfil } = useApp();
   const qc = useQueryClient();
   const [abierto, setAbierto] = useState(false);
@@ -41,13 +43,13 @@ export function BotonBorrar({ entidad, id, etiqueta, invalidar, className }: Pro
         solicitadoPor: perfil!.id,
       });
       toast.success(requiereAprobacion
-        ? 'Retirado de la vista. El administrador revisará la solicitud.'
-        : 'Retirado de la vista.');
+        ? t('deleteRecord.removedToastApproval')
+        : t('deleteRecord.removedToast'));
       invalidar.forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       setAbierto(false);
       setMotivo('');
     } catch (e: any) {
-      toast.error(e?.message ?? 'No se pudo completar la operación');
+      toast.error(e?.message ?? t('deleteRecord.errGeneric'));
     } finally { setOcupado(false); }
   };
 
@@ -55,7 +57,7 @@ export function BotonBorrar({ entidad, id, etiqueta, invalidar, className }: Pro
     <>
       <button
         onClick={(e) => { e.stopPropagation(); setAbierto(true); }}
-        title={requiereAprobacion ? 'Solicitar eliminación' : 'Retirar de la vista'}
+        title={requiereAprobacion ? t('deleteRecord.requestDelete') : t('deleteRecord.removeFromView')}
         className={className ?? 'btn-ghost !p-1.5 text-danger'}
       >
         <Trash2 size={15} />
@@ -64,7 +66,7 @@ export function BotonBorrar({ entidad, id, etiqueta, invalidar, className }: Pro
       <Modal
         open={abierto}
         onClose={() => !ocupado && setAbierto(false)}
-        title={requiereAprobacion ? 'Solicitar eliminación' : 'Retirar de la vista'}
+        title={requiereAprobacion ? t('deleteRecord.requestDelete') : t('deleteRecord.removeFromView')}
         size="sm"
       >
         <div className="space-y-4">
@@ -74,25 +76,16 @@ export function BotonBorrar({ entidad, id, etiqueta, invalidar, className }: Pro
               {/* Se dice explícitamente que no se borra de la base: "eliminar"
                   a secas haría creer que el dato desaparece, y no es el caso. */}
               {requiereAprobacion ? (
-                <>
-                  <strong>{etiqueta}</strong> dejará de aparecer en los listados,
-                  pero <strong>no se borra de la base de datos</strong>. El
-                  administrador decidirá si restaurarlo o eliminarlo de forma
-                  definitiva.
-                </>
+                <Trans i18nKey="deleteRecord.warnApproval" values={{ etiqueta }} components={[<strong />]} />
               ) : (
-                <>
-                  <strong>{etiqueta}</strong> dejará de aparecer en los listados.
-                  Podrás restaurarlo o eliminarlo definitivamente desde
-                  <strong> Solicitudes</strong>.
-                </>
+                <Trans i18nKey="deleteRecord.warnDirect" values={{ etiqueta }} components={[<strong />]} />
               )}
             </div>
           </div>
 
           <div>
             <label className="label" htmlFor="motivo-borrado">
-              Motivo {requiereAprobacion ? '(ayuda al administrador a decidir)' : '(opcional)'}
+              {t('deleteRecord.reasonLabel')} {requiereAprobacion ? t('deleteRecord.reasonHintApproval') : t('deleteRecord.reasonHintOptional')}
             </label>
             <textarea
               id="motivo-borrado"
@@ -100,17 +93,17 @@ export function BotonBorrar({ entidad, id, etiqueta, invalidar, className }: Pro
               onChange={(e) => setMotivo(e.target.value)}
               rows={3}
               className="input resize-none"
-              placeholder="Ej.: registrado por error, equipo duplicado…"
+              placeholder={t('deleteRecord.reasonPlaceholder')}
             />
           </div>
 
           <div className="flex justify-end gap-2">
             <button onClick={() => setAbierto(false)} disabled={ocupado} className="btn-secondary">
-              Cancelar
+              {t('common.cancel')}
             </button>
             <button onClick={confirmar} disabled={ocupado} className="btn-danger">
               {ocupado ? <Loader2 size={16} className="animate-spin" /> : <EyeOff size={16} />}
-              {requiereAprobacion ? 'Solicitar eliminación' : 'Retirar'}
+              {requiereAprobacion ? t('deleteRecord.requestDelete') : t('deleteRecord.removeShort')}
             </button>
           </div>
         </div>

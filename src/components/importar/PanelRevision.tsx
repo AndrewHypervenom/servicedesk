@@ -1,11 +1,14 @@
 import { useMemo, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
   AlertTriangle, Boxes, ChevronDown, Download, Info, ShieldAlert, Users, ArrowLeftRight, Check,
 } from 'lucide-react';
+import type { TFunction } from 'i18next';
+import i18n from '@/i18n';
 import { Select } from '@/components/ui/Select';
 import { normNombre } from '@/lib/importador/normalizar';
-import { estadoCedulas } from '@/lib/importador/analizar';
+import { estadoCedulas, duenoDeCedula } from '@/lib/importador/analizar';
 import type {
   ConflictoSerial, Incidencia, ResultadoAnalisis, Resoluciones, Severidad, TipoIncidencia,
 } from '@/lib/importador/tipos';
@@ -24,39 +27,13 @@ const SEV_ESTILO: Record<Severidad, { chip: string; icono: typeof Info }> = {
   INFO: { chip: 'bg-magenta-500/15 text-magenta-600 dark:text-magenta-300', icono: Info },
 };
 
-/** Título de cada familia de incidencias, para poder agruparlas y que 16
- *  avisos idénticos no se lean como 16 problemas distintos. */
-const TITULO_TIPO: Record<TipoIncidencia, string> = {
-  CEDULA_FALTANTE: 'Cédulas que faltan',
-  CEDULA_INVALIDA: 'Cédulas que no se pudieron leer',
-  SERIAL_CONFLICTO: 'Seriales repetidos',
-  SERIAL_HUERFANO: 'Movimientos de equipos que no están en BD_EQUIPOS',
-  SERIAL_YA_EXISTE: 'Seriales que ya están en el inventario',
-  MODELO_SOSPECHOSO: 'Modelos que parecen tarjeta de red o serial',
-  MODELO_AUSENTE: 'Equipos sin modelo',
-  MARCA_SOSPECHOSA: 'Marcas que en realidad son una línea de producto',
-  VALOR_NO_CATALOGADO: 'Valores fuera del catálogo',
-  FECHA_INVALIDA: 'Fechas que no se pudieron leer',
-  HOJA_IGNORADA: 'Hojas sin datos para importar',
-  FILAS_PLANTILLA: 'Filas de plantilla omitidas',
-};
-
-const ESTADO_ASIG: Record<string, string> = {
-  DISPONIBLE: 'Disponible',
-  ASIGNADO: 'Asignado',
-  EN_MANTENIMIENTO: 'En mantenimiento',
-  EN_DEVOLUCION: 'En devolución',
-  DE_BAJA: 'De baja',
-};
-const ESTADO_FIS: Record<string, string> = {
-  BUENO: 'Bueno', REGULAR: 'Regular', CON_FALLA: 'Con falla', DANADO: 'Dañado',
-};
-
 /** Descarga las incidencias para poder revisarlas fuera de la app. */
-function exportarIncidencias(incidencias: Incidencia[], archivo: string) {
+function exportarIncidencias(incidencias: Incidencia[], archivo: string, t: TFunction) {
   const esc = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const csv = [
-    ['Severidad', 'Hoja', 'Fila', 'Columna', 'Valor', 'Qué pasó', 'Qué hacer'].map(esc).join(';'),
+    [t('importRevision.csvSeveridad'), t('importRevision.csvHoja'), t('importRevision.csvFila'),
+      t('importRevision.csvColumna'), t('importRevision.csvValor'), t('importRevision.csvQuePaso'),
+      t('importRevision.csvQueHacer')].map(esc).join(';'),
     ...incidencias.map((i) => [i.severidad, i.hoja, i.fila ?? '', i.columna ?? '', i.valor ?? '', i.mensaje, i.sugerencia ?? ''].map(esc).join(';')),
   ].join('\r\n');
   // El BOM hace que Excel abra las tildes bien.
@@ -122,6 +99,7 @@ function TarjetaConflicto({ conflicto, elegida, onElegir }: {
   elegida: number | undefined;
   onElegir: (fila: number) => void;
 }) {
+  const { t } = useTranslation();
   // Solo se resalta lo que cambia entre versiones; lo idéntico no ayuda a decidir.
   const difiere = useMemo(() => ({
     resumen: new Set(conflicto.opciones.map((o) => o.resumen)).size > 1,
@@ -140,14 +118,14 @@ function TarjetaConflicto({ conflicto, elegida, onElegir }: {
               key="ok" initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
               className="badge bg-brand-500/15 text-brand-600 dark:text-brand-400"
             >
-              <Check size={11} /> Resuelto: fila {elegida}
+              <Check size={11} /> {t('importRevision.resolvedRow', { fila: elegida })}
             </motion.span>
           ) : (
             <motion.span
               key="pend" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
               className="text-xs text-ink-400"
             >
-              Elige la versión correcta
+              {t('importRevision.chooseVersion')}
             </motion.span>
           )}
         </AnimatePresence>
@@ -168,17 +146,17 @@ function TarjetaConflicto({ conflicto, elegida, onElegir }: {
             >
               <div className="flex items-center gap-2 mb-2">
                 <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
-                  Fila {o.fila} del Excel
+                  {t('importRevision.rowOfExcel', { fila: o.fila })}
                 </span>
                 <span className="ml-auto w-4 h-4">
                   {activa && <CheckPop size={15} />}
                 </span>
               </div>
               <div className="space-y-1">
-                <DatoConflicto etiqueta="Equipo" valor={o.resumen} distinto={difiere.resumen} />
-                <DatoConflicto etiqueta="Estado" valor={ESTADO_ASIG[o.estado_asignacion] ?? o.estado_asignacion} distinto={difiere.estado} />
-                <DatoConflicto etiqueta="Condición" valor={ESTADO_FIS[o.estado_fisico] ?? o.estado_fisico} distinto={difiere.fisico} />
-                <DatoConflicto etiqueta="Responsable" valor={o.usuario ?? 'En bodega'} distinto={difiere.usuario} />
+                <DatoConflicto etiqueta={t('importRevision.conflEquipo')} valor={o.resumen} distinto={difiere.resumen} />
+                <DatoConflicto etiqueta={t('importRevision.conflEstado')} valor={o.estado_asignacion ? t(`estadoAsig.${o.estado_asignacion}`) : o.estado_asignacion} distinto={difiere.estado} />
+                <DatoConflicto etiqueta={t('importRevision.conflCondicion')} valor={o.estado_fisico ? t(`estadoFis.${o.estado_fisico}`) : o.estado_fisico} distinto={difiere.fisico} />
+                <DatoConflicto etiqueta={t('importRevision.conflResponsable')} valor={o.usuario ?? t('importRevision.inWarehouse')} distinto={difiere.usuario} />
               </div>
             </motion.button>
           );
@@ -189,6 +167,7 @@ function TarjetaConflicto({ conflicto, elegida, onElegir }: {
 }
 
 export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
+  const { t } = useTranslation();
   const [verAdvertencias, setVerAdvertencias] = useState(false);
   const [grupoAbierto, setGrupoAbierto] = useState<string | null>(null);
 
@@ -236,17 +215,17 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
     <div className="space-y-6">
       {/* ---------------------------------------------------------- resumen */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Tile i={0} icono={Boxes} valor={analisis.equipos.length} etiqueta="Equipos" tono="bg-brand-500/15 text-brand-600 dark:text-brand-400" />
-        <Tile i={1} icono={Users} valor={analisis.colaboradores.length} etiqueta="Colaboradores" tono="bg-magenta-500/15 text-magenta-600 dark:text-magenta-300" />
-        <Tile i={2} icono={ArrowLeftRight} valor={analisis.movimientos.length} etiqueta="Movimientos" tono="bg-ink-200/60 dark:bg-white/10 text-ink-600 dark:text-ink-200" />
-        <Tile i={3} icono={AlertTriangle} valor={advertencias.length} etiqueta="Por revisar" tono="bg-warning/15 text-amber-600 dark:text-warning" />
+        <Tile i={0} icono={Boxes} valor={analisis.equipos.length} etiqueta={t('importRevision.tileEquipos')} tono="bg-brand-500/15 text-brand-600 dark:text-brand-400" />
+        <Tile i={1} icono={Users} valor={analisis.colaboradores.length} etiqueta={t('importRevision.tileColaboradores')} tono="bg-magenta-500/15 text-magenta-600 dark:text-magenta-300" />
+        <Tile i={2} icono={ArrowLeftRight} valor={analisis.movimientos.length} etiqueta={t('importRevision.tileMovimientos')} tono="bg-ink-200/60 dark:bg-white/10 text-ink-600 dark:text-ink-200" />
+        <Tile i={3} icono={AlertTriangle} valor={advertencias.length} etiqueta={t('importRevision.tilePorRevisar')} tono="bg-warning/15 text-amber-600 dark:text-warning" />
       </div>
 
       {/* ------------------------------------------------------------ hojas */}
       <div className="card overflow-hidden">
         <div className="px-4 py-3 border-b border-ink-100 dark:border-white/5 flex items-center justify-between">
-          <h4 className="text-sm font-semibold">Hojas del archivo</h4>
-          <span className="text-xs text-ink-400">analizado en {analisis.duracionMs} ms</span>
+          <h4 className="text-sm font-semibold">{t('importRevision.sheetsTitle')}</h4>
+          <span className="text-xs text-ink-400">{t('importRevision.analyzedIn', { ms: analisis.duracionMs })}</span>
         </div>
         <div className="divide-y divide-ink-50 dark:divide-white/5">
           {analisis.hojas.map((h, i) => (
@@ -258,7 +237,7 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
               <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${h.ignorada ? 'bg-ink-300' : 'bg-brand-500'}`} />
               <span className="font-medium w-44 truncate">{h.nombre}</span>
               <span className="text-ink-400 text-xs flex-1 truncate">
-                {h.ignorada ? h.nota : `${h.filasUtiles} de ${h.filasLeidas} filas → ${h.destino}`}
+                {h.ignorada ? h.nota : t('importRevision.sheetRows', { utiles: h.filasUtiles, leidas: h.filasLeidas, destino: h.destino })}
                 {!h.ignorada && h.nota ? ` · ${h.nota}` : ''}
               </span>
             </motion.div>
@@ -273,12 +252,11 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
             /* Varias ubicaciones en el archivo: se mapea cada una contra una sede. */
             <>
               <div className="flex items-center gap-2">
-                <label className="label req !mb-0">Sedes destino</label>
+                <label className="label req !mb-0">{t('importRevision.sedesDestino')}</label>
                 {sedesListas && <CheckPop size={14} />}
               </div>
               <p className="text-xs text-ink-400 mt-1 mb-3">
-                El archivo trae varias ubicaciones. Indica a qué sede del sistema va cada una;
-                lo que no traiga ubicación se registra en la sede por defecto.
+                {t('importRevision.multiSedeHelp')}
               </p>
               <div className="space-y-2.5">
                 {analisis.ubicaciones.map((u) => {
@@ -294,7 +272,7 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
                         <Select
                           value={val}
                           onChange={(v) => onRes({ ...res, sedes: { ...res.sedes, [clave]: v } })}
-                          placeholder="Elige la sede"
+                          placeholder={t('importRevision.chooseSede')}
                           options={opcionesSede}
                         />
                       </div>
@@ -303,14 +281,14 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
                 })}
                 <div className="flex flex-col sm:flex-row sm:items-center gap-2 pt-2.5 border-t border-ink-50 dark:border-white/5">
                   <div className="sm:w-40 shrink-0 flex items-center gap-1.5">
-                    <span className="text-sm text-ink-400 truncate">Por defecto</span>
+                    <span className="text-sm text-ink-400 truncate">{t('importRevision.porDefecto')}</span>
                     {res.sedeDefecto && <CheckPop size={13} />}
                   </div>
                   <div className="flex-1">
                     <Select
                       value={res.sedeDefecto ?? ''}
                       onChange={(v) => onRes({ ...res, sedeDefecto: v || null })}
-                      placeholder="Sede para lo que no trae ubicación"
+                      placeholder={t('importRevision.defaultSedePlaceholder')}
                       options={opcionesSede}
                     />
                   </div>
@@ -321,18 +299,18 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
             /* Una sola ubicación (o ninguna): un único selector, como toda la vida. */
             <>
               <div className="flex items-center gap-2">
-                <label className="label req !mb-0">Sede destino</label>
+                <label className="label req !mb-0">{t('importRevision.sedeDestino')}</label>
                 {res.sedeDefecto && <CheckPop size={14} />}
               </div>
               <p className="text-xs text-ink-400 mt-1 mb-2.5">
                 {analisis.ubicaciones.length
-                  ? `El archivo dice «${analisis.ubicaciones[0]}». Elige contra qué sede del sistema se registra.`
-                  : 'El archivo no trae ubicación. Elige la sede destino.'}
+                  ? t('importRevision.oneLocationHelp', { ubi: analisis.ubicaciones[0] })
+                  : t('importRevision.noLocationHelp')}
               </p>
               <Select
                 value={res.sedeDefecto ?? ''}
                 onChange={(v) => onRes({ ...res, sedeDefecto: v || null })}
-                placeholder="Selecciona una sede"
+                placeholder={t('importRevision.selectSede')}
                 options={opcionesSede}
               />
             </>
@@ -340,7 +318,7 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
         )}
         {!sedes.length && (
           <p className="text-xs text-danger mt-2">
-            No hay sedes creadas. Crea la sede en Sedes antes de importar.
+            {t('importRevision.noSedes')}
           </p>
         )}
       </div>
@@ -350,7 +328,7 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
         <div id="imp-cedulas" className="card overflow-hidden border-danger/30 scroll-mt-4">
           <div className="px-4 py-3 bg-danger/[0.06] border-b border-danger/15 flex items-center gap-2">
             <ShieldAlert size={16} className="text-danger shrink-0" />
-            <h4 className="text-sm font-semibold">Cédulas que faltan</h4>
+            <h4 className="text-sm font-semibold">{t('importRevision.cedulasFaltan')}</h4>
             <AnimatePresence mode="wait">
               <motion.span
                 key={cedulasListas === analisis.pendientesCedula.length ? 'ok' : 'falta'}
@@ -361,22 +339,21 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
                     : 'bg-danger/15 text-red-600 dark:text-danger'
                 }`}
               >
-                {cedulasListas} de {analisis.pendientesCedula.length}
+                {t('importRevision.progressOf', { listas: cedulasListas, total: analisis.pendientesCedula.length })}
               </motion.span>
             </AnimatePresence>
           </div>
           <div className="px-4 py-3">
             <p className="text-xs text-ink-400 mb-3.5">
-              Estas personas tienen equipos a cargo, pero el archivo nunca dice su cédula
-              (solo la hoja ENTRADAS la trae, y ahí no aparecen). Sin cédula no se puede
-              crear el colaborador ni sostener la asignación.
+              {t('importRevision.cedulasHelp')}
             </p>
             <div className="space-y-2.5">
               {analisis.pendientesCedula.map((p, i) => {
                 const valor = res.cedulas[p.nombre] ?? '';
                 const estado = estadoCed[p.nombre];
                 const ok = estado === 'ok';
-                const conError = estado === 'invalida' || estado === 'duplicada';
+                const conError = estado === 'invalida' || estado === 'duplicada' || estado === 'existente';
+                const dueno = estado === 'existente' ? duenoDeCedula(analisis, valor) : undefined;
                 return (
                   <motion.div
                     key={p.nombre}
@@ -389,14 +366,14 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
                     <div className="flex-1 min-w-0">
                       <div className="text-sm font-medium truncate">{p.nombre}</div>
                       <div className="text-xs text-ink-400 truncate">
-                        <span className="font-mono">{p.seriales.join(', ')}</span> · según {p.origen.join(' y ')}
+                        <span className="font-mono">{p.seriales.join(', ')}</span> · {t('importRevision.byOrigin', { origen: p.origen.join(i18n.language === 'pt' ? ' e ' : ' y ') })}
                       </div>
                     </div>
                     <div className="sm:w-52 shrink-0">
                       <div className="relative">
                         <input
                           className={`input pr-9 ${conError ? '!border-danger focus:!ring-danger/40' : ''}`}
-                          placeholder="Cédula"
+                          placeholder={t('importRevision.cedulaPlaceholder')}
                           inputMode="numeric"
                           value={valor}
                           onChange={(e) => setCedula(p.nombre, e.target.value)}
@@ -409,8 +386,10 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
                           className="text-[11px] text-danger mt-1"
                         >
                           {estado === 'duplicada'
-                            ? 'Esta cédula ya se la asignaste a otra persona. Cada colaborador necesita una distinta.'
-                            : 'Solo números, entre 4 y 15 dígitos (los puntos se quitan solos).'}
+                            ? t('importRevision.errDuplicada')
+                            : estado === 'existente'
+                              ? t('importRevision.errExistente', { dueno: dueno ? ` («${dueno}»)` : '' })
+                              : t('importRevision.errFormato')}
                         </motion.p>
                       )}
                     </div>
@@ -426,16 +405,14 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
         <div id="imp-conflictos" className="card overflow-hidden border-danger/30 scroll-mt-4">
           <div className="px-4 py-3 bg-danger/[0.06] border-b border-danger/15 flex items-center gap-2">
             <ShieldAlert size={16} className="text-danger shrink-0" />
-            <h4 className="text-sm font-semibold">Seriales que se contradicen</h4>
+            <h4 className="text-sm font-semibold">{t('importRevision.conflictosTitle')}</h4>
             <span className="badge bg-danger/15 text-red-600 dark:text-danger ml-auto tabular-nums">
-              {analisis.conflictos.filter((c) => res.conflictos[c.serial] !== undefined).length} de {analisis.conflictos.length}
+              {t('importRevision.progressOf', { listas: analisis.conflictos.filter((c) => res.conflictos[c.serial] !== undefined).length, total: analisis.conflictos.length })}
             </span>
           </div>
           <div className="px-4 py-3 space-y-4">
             <p className="text-xs text-ink-400">
-              El mismo serial aparece varias veces con datos distintos. Como el serial es
-              único en el inventario, hay que quedarse con una sola versión: los campos
-              resaltados son los que cambian entre una y otra.
+              {t('importRevision.conflictosHelp')}
             </p>
             {analisis.conflictos.map((c) => (
               <TarjetaConflicto
@@ -458,9 +435,9 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
           >
             <AlertTriangle size={16} className="text-warning shrink-0" />
             <div className="text-left">
-              <h4 className="text-sm font-semibold">Datos que conviene revisar a mano</h4>
+              <h4 className="text-sm font-semibold">{t('importRevision.advertenciasTitle')}</h4>
               <p className="text-xs text-ink-400 font-normal">
-                Se importan igual; esto es para que sepas qué corregir después.
+                {t('importRevision.advertenciasHelp')}
               </p>
             </div>
             <span className="badge bg-warning/15 text-amber-600 dark:text-warning ml-1">{advertencias.length}</span>
@@ -489,7 +466,7 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
                           <span className={`w-6 h-6 rounded-lg grid place-items-center shrink-0 ${chip}`}>
                             <Icono size={12} />
                           </span>
-                          <span className="text-sm flex-1 min-w-0 truncate">{TITULO_TIPO[g.tipo]}</span>
+                          <span className="text-sm flex-1 min-w-0 truncate">{t(`importRevision.tipo.${g.tipo}`)}</span>
                           <span className="text-xs text-ink-400 tabular-nums">{g.items.length}</span>
                           <motion.span animate={{ rotate: abierto ? 180 : 0 }} className="text-ink-400">
                             <ChevronDown size={14} />
@@ -514,7 +491,7 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
                                       <div className="text-xs text-ink-400 mt-0.5">{inc.sugerencia}</div>
                                     )}
                                     <div className="text-[11px] text-ink-400 mt-1 font-mono">
-                                      {inc.hoja}{inc.fila ? ` · fila ${inc.fila}` : ''}{inc.columna ? ` · ${inc.columna}` : ''}
+                                      {inc.hoja}{inc.fila ? ` · ${t('importRevision.csvFila').toLowerCase()} ${inc.fila}` : ''}{inc.columna ? ` · ${inc.columna}` : ''}
                                     </div>
                                   </motion.div>
                                 ))}
@@ -528,10 +505,10 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
                 </div>
                 <div className="px-4 py-2.5 border-t border-ink-100 dark:border-white/5">
                   <button
-                    onClick={() => exportarIncidencias([...advertencias, ...infos], analisis.archivo)}
+                    onClick={() => exportarIncidencias([...advertencias, ...infos], analisis.archivo, t)}
                     className="btn-ghost !py-1.5 !px-2 text-xs"
                   >
-                    <Download size={13} /> Descargar lista en CSV
+                    <Download size={13} /> {t('importRevision.downloadCsv')}
                   </button>
                 </div>
               </motion.div>

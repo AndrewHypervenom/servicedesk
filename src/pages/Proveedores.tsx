@@ -1,12 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Truck, Building2, Warehouse, ShoppingCart, Plus } from 'lucide-react';
-import { listProveedores, listEquipos, createProveedor } from '@/lib/api';
+import { Truck, Building2, Warehouse, ShoppingCart, Plus, SearchX, Pencil } from 'lucide-react';
+import { listProveedores, listEquipos, createProveedor, updateProveedor } from '@/lib/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { BotonBorrar } from '@/components/ui/BotonBorrar';
@@ -26,7 +27,17 @@ export function Proveedores() {
   const { data: provs = [], refetch, isLoading } = useQuery({ queryKey: ['proveedores'], queryFn: listProveedores });
   const { data: equipos = [] } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
   const [open, setOpen] = useState(false);
+  const [editando, setEditando] = useState<Proveedor | null>(null);
+  const [q, setQ] = useState('');
   const puedeCrear = can('ADMIN', 'LIDER', 'JEFE_SEDE');
+
+  const filtrados = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return provs;
+    return provs.filter((p) =>
+      [p.nombre, p.contacto, p.correo, p.observacion, t(`proveedorTipo.${p.tipo}`)]
+        .some((v) => v?.toLowerCase().includes(term)));
+  }, [provs, q, t]);
 
   return (
     <div>
@@ -46,13 +57,34 @@ export function Proveedores() {
         </div>
       )}
 
+      {!isLoading && provs.length > 0 && (
+        <div className="card p-4 mb-5">
+          <SearchInput value={q} onChange={setQ} placeholder={t('suppliers.searchPlaceholder')} />
+        </div>
+      )}
+
+      {!isLoading && provs.length > 0 && filtrados.length === 0 && (
+        <div className="card">
+          <EmptyState icon={SearchX} title={t('common.noResultsTitle')} description={t('common.noResultsDesc')} />
+        </div>
+      )}
+
       <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {!isLoading && provs.map((p) => {
+        {!isLoading && filtrados.map((p) => {
           const Icon = tipoIcon[p.tipo] ?? Truck;
           const count = equipos.filter((e) => e.proveedor_propietario === p.nombre).length;
           return (
             <div key={p.id} className="card p-5 relative group">
-              <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+              <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition">
+                {puedeCrear && (
+                  <button
+                    onClick={() => setEditando(p)}
+                    title={t('common.edit')}
+                    className="p-1.5 rounded-lg text-ink-500 hover:bg-ink-100 dark:hover:bg-white/10 transition"
+                  >
+                    <Pencil size={15} />
+                  </button>
+                )}
                 <BotonBorrar
                   entidad="proveedores"
                   id={p.id}
@@ -75,31 +107,57 @@ export function Proveedores() {
         })}
       </div>
 
-      {puedeCrear && <NuevoProveedorModal open={open} onClose={() => setOpen(false)} onSaved={refetch} />}
+      {puedeCrear && <ProveedorModal open={open} onClose={() => setOpen(false)} onSaved={refetch} />}
+      {puedeCrear && (
+        <ProveedorModal
+          open={!!editando}
+          proveedor={editando}
+          onClose={() => setEditando(null)}
+          onSaved={refetch}
+        />
+      )}
     </div>
   );
 }
 
-function NuevoProveedorModal({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
+function ProveedorModal({ open, proveedor, onClose, onSaved }:
+  { open: boolean; proveedor?: Proveedor | null; onClose: () => void; onSaved: () => void }) {
   const { t } = useTranslation();
   const vacio: Partial<Proveedor> = { tipo: 'ARRENDADOR' };
   const [f, setF] = useState<Partial<Proveedor>>(vacio);
   const [busy, setBusy] = useState(false);
+  const [cargado, setCargado] = useState<string | null>(null);
   const set = (k: keyof Proveedor, v: string) => setF((s) => ({ ...s, [k]: v }));
+  const editando = !!proveedor;
+
+  // Se siembra el formulario cuando cambia el proveedor que se está editando,
+  // sin useEffect: comparar el id contra el último cargado evita un render extra.
+  const claveActual = proveedor?.id ?? (open ? '__nuevo__' : null);
+  if (claveActual !== cargado) {
+    setCargado(claveActual);
+    setF(proveedor ? { ...proveedor } : vacio);
+  }
 
   const guardar = async () => {
     if (!f.nombre?.trim()) { toast.error(t('form.requiredFields')); return; }
     setBusy(true);
     try {
-      await createProveedor({ ...f, nombre: f.nombre.trim() });
+      if (proveedor) {
+        await updateProveedor(proveedor.id, {
+          nombre: f.nombre.trim(), tipo: f.tipo, contacto: f.contacto ?? null,
+          correo: f.correo ?? null, observacion: f.observacion ?? null,
+        });
+      } else {
+        await createProveedor({ ...f, nombre: f.nombre.trim() });
+      }
       toast.success(t('common.success'));
-      setF(vacio); onClose(); onSaved();
+      setF(vacio); setCargado(null); onClose(); onSaved();
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
     finally { setBusy(false); }
   };
 
   return (
-    <Modal open={open} onClose={() => !busy && onClose()} title={t('suppliers.new')}>
+    <Modal open={open} onClose={() => !busy && onClose()} title={editando ? t('suppliers.edit') : t('suppliers.new')}>
       <div className="grid sm:grid-cols-2 gap-4">
         <div>
           <label className="label req">{t('suppliers.name')}</label>

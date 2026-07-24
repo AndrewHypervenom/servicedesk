@@ -35,6 +35,7 @@ export type Severidad =
 export type TipoIncidencia =
   | 'CEDULA_FALTANTE'
   | 'CEDULA_INVALIDA'
+  | 'CEDULA_EXISTENTE'
   | 'SERIAL_CONFLICTO'
   | 'SERIAL_HUERFANO'
   | 'SERIAL_YA_EXISTE'
@@ -139,6 +140,12 @@ export interface ResultadoAnalisis {
   conflictos: ConflictoSerial[];
   /** Nombres de sede que el Excel menciona y hay que mapear contra `sedes`. */
   ubicaciones: string[];
+  /**
+   * Cédulas que ya están en la base (cédula normalizada -> nombre del registro
+   * existente). Se usa para avisar que una cédula del archivo ya pertenece a otra
+   * persona y que la importación no la sobrescribiría.
+   */
+  cedulasEnBase: Record<string, string>;
   duracionMs: number;
 }
 

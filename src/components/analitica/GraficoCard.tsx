@@ -1,4 +1,5 @@
 import { useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Download, Copy, Check, Table2 } from 'lucide-react';
 import { exportarPng, copiarPng } from '@/lib/exportarGrafico';
 import { toast } from '@/components/ui/Toast';
@@ -21,6 +22,7 @@ interface Props {
 export const GraficoCard = forwardRef<GraficoHandle, Props>(function GraficoCard(
   { titulo, lectura, tabla, fondoExport, children, className }, ref,
 ) {
+  const { t } = useTranslation();
   const box = useRef<HTMLDivElement>(null);
   const [copiado, setCopiado] = useState(false);
   const [verTabla, setVerTabla] = useState(false);
@@ -30,7 +32,7 @@ export const GraficoCard = forwardRef<GraficoHandle, Props>(function GraficoCard
   const png = async () => {
     try {
       await exportarPng(box.current!, titulo.toLowerCase().replace(/\s+/g, '-'), fondoExport);
-    } catch (e: any) { toast.error(e?.message ?? 'No se pudo exportar'); }
+    } catch (e: any) { toast.error(e?.message ?? t('analytics.cardErrExport')); }
   };
 
   const copiar = async () => {
@@ -41,7 +43,7 @@ export const GraficoCard = forwardRef<GraficoHandle, Props>(function GraficoCard
     } catch {
       // El portapapeles de imágenes no existe en Firefox ni fuera de HTTPS.
       // Se degrada a descarga en vez de dejar al usuario sin salida.
-      toast.error('Tu navegador no permite copiar imágenes; se descargará en su lugar');
+      toast.error(t('analytics.cardCopyFallback'));
       png();
     }
   };
@@ -59,15 +61,15 @@ export const GraficoCard = forwardRef<GraficoHandle, Props>(function GraficoCard
         <div className="flex items-center gap-1 shrink-0 opacity-0 focus-within:opacity-100
                         group-hover/card:opacity-100 transition-opacity duration-200">
           {tabla && (
-            <button onClick={() => setVerTabla((v) => !v)} title="Ver como tabla"
+            <button onClick={() => setVerTabla((v) => !v)} title={t('analytics.cardViewTable')}
               aria-pressed={verTabla}
               className="btn-ghost !p-1.5 !rounded-lg"><Table2 size={15} /></button>
           )}
-          <button onClick={copiar} title="Copiar imagen"
+          <button onClick={copiar} title={t('analytics.cardCopyImage')}
             className="btn-ghost !p-1.5 !rounded-lg">
             {copiado ? <Check size={15} className="text-brand-500" /> : <Copy size={15} />}
           </button>
-          <button onClick={png} title="Descargar PNG"
+          <button onClick={png} title={t('analytics.cardDownloadPng')}
             className="btn-ghost !p-1.5 !rounded-lg"><Download size={15} /></button>
         </div>
       </div>

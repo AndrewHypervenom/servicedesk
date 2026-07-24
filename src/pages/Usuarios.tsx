@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useTranslation } from 'react-i18next';
-import { ShieldCheck, UserPlus, Copy, Check, Pencil, Trash2, AlertTriangle, UserX } from 'lucide-react';
+import { Trans, useTranslation } from 'react-i18next';
+import { ShieldCheck, UserPlus, Copy, Check, Pencil, Trash2, AlertTriangle, UserX, SearchX } from 'lucide-react';
 import {
   listPerfiles, updateRol, crearUsuario, listSedes,
   listSedesPorPerfil, setSedesDePerfil, actualizarPerfil, eliminarUsuario,
@@ -9,6 +9,7 @@ import {
 import { esAdmin } from '@/lib/roles';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select, type SelectOption } from '@/components/ui/Select';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -39,8 +40,17 @@ export function Usuarios() {
   });
   const [nuevo, setNuevo] = useState(false);
   const [editando, setEditando] = useState<Perfil | null>(null);
+  const [q, setQ] = useState('');
   const { perfil: yo } = useApp();
   const soyAdmin = esAdmin(yo?.rol);
+
+  const filtrados = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return perfiles;
+    return perfiles.filter((p) =>
+      [p.nombre, p.correo, p.cedula, t(`rol.${p.rol}`)]
+        .some((v) => v?.toLowerCase().includes(term)));
+  }, [perfiles, q, t]);
 
   const recargar = () => { refetch(); refetchSedes(); };
 
@@ -66,17 +76,23 @@ export function Usuarios() {
         ))}
       </div>
 
+      {!isLoading && perfiles.length > 0 && (
+        <div className="card p-4 mb-5">
+          <SearchInput value={q} onChange={setQ} placeholder={t('users.searchPlaceholder')} />
+        </div>
+      )}
+
       <div className="card overflow-hidden">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase text-ink-400 border-b border-ink-100 dark:border-white/5">
               <th className="px-5 py-3">{t('auth.name')}</th><th className="px-4 py-3">{t('auth.email')}</th><th className="px-4 py-3">{t('users.role')}</th><th className="px-4 py-3">{t('users.sede')}</th>
-              {soyAdmin && <th className="px-4 py-3 text-right">Acciones</th>}
+              {soyAdmin && <th className="px-4 py-3 text-right">{t('common.actions')}</th>}
             </tr>
           </thead>
           <tbody>
             {isLoading && <SkeletonRows rows={5} cols={4} />}
-            {!isLoading && perfiles.map((p) => (
+            {!isLoading && filtrados.map((p) => (
               <tr key={p.id} className={`border-b border-ink-50 dark:border-white/5 ${p.activo ? '' : 'opacity-55'}`}>
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-2.5">
@@ -89,11 +105,11 @@ export function Usuarios() {
                         de la fila: un matiz de opacidad no es una etiqueta. */}
                     {!p.activo && (
                       <span className="badge bg-ink-200 dark:bg-white/10 text-ink-500">
-                        <UserX size={11} /> Desactivado
+                        <UserX size={11} /> {t('users.deactivated')}
                       </span>
                     )}
                     {p.id === yo?.id && (
-                      <span className="badge bg-brand-500/15 text-brand-600 dark:text-brand-300">Tú</span>
+                      <span className="badge bg-brand-500/15 text-brand-600 dark:text-brand-300">{t('users.you')}</span>
                     )}
                   </div>
                 </td>
@@ -117,7 +133,7 @@ export function Usuarios() {
                 </td>
                 {soyAdmin && (
                   <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <button onClick={() => setEditando(p)} title="Editar usuario"
+                    <button onClick={() => setEditando(p)} title={t('users.editUser')}
                       className="btn-ghost !p-1.5"><Pencil size={15} /></button>
                     <BorrarUsuario perfil={p} esYo={p.id === yo?.id} onDone={recargar} />
                   </td>
@@ -133,6 +149,9 @@ export function Usuarios() {
             description={t('users.emptyDesc')}
             action={<Button variant="primary" icon={UserPlus} onClick={() => setNuevo(true)}>{t('users.newUser')}</Button>}
           />
+        )}
+        {!isLoading && perfiles.length > 0 && filtrados.length === 0 && (
+          <EmptyState icon={SearchX} title={t('common.noResultsTitle')} description={t('common.noResultsDesc')} />
         )}
       </div>
     </div>
@@ -185,7 +204,7 @@ function EditarUsuarioModal({ perfil, sedes, onClose, onSaved }:
 
   return (
     <Modal open={!!perfil} onClose={() => !busy && onClose()}
-      title="Editar usuario" subtitle={perfil?.correo ?? undefined}>
+      title={t('users.editUser')} subtitle={perfil?.correo ?? undefined}>
       <div className="grid sm:grid-cols-2 gap-4">
         <div>
           <label className="label req">{t('auth.name')}</label>
@@ -196,7 +215,7 @@ function EditarUsuarioModal({ perfil, sedes, onClose, onSaved }:
           <input className="input" value={f.cedula} onChange={(e) => set('cedula', e.target.value)} />
         </div>
         <div>
-          <label className="label">Cargo</label>
+          <label className="label">{t('users.cargo')}</label>
           <input className="input" value={f.cargo} onChange={(e) => set('cargo', e.target.value)} />
         </div>
         <div>
@@ -213,13 +232,12 @@ function EditarUsuarioModal({ perfil, sedes, onClose, onSaved }:
         )}
 
         <div className="sm:col-span-2">
-          <label className="label">Correo</label>
+          <label className="label">{t('auth.email')}</label>
           <div className="input bg-ink-50 dark:bg-white/5 text-ink-400 truncate">{perfil?.correo}</div>
           {/* Se explica por qué no es editable en vez de dejar el campo gris sin
               más: si no, parece un fallo de la pantalla. */}
           <p className="text-[11px] text-ink-400 mt-1 leading-snug">
-            El correo es la credencial de acceso y no se cambia desde aquí.
-            Modificarlo solo en el perfil dejaría al usuario entrando con el anterior.
+            {t('users.emailReadonly')}
           </p>
         </div>
 
@@ -234,11 +252,11 @@ function EditarUsuarioModal({ perfil, sedes, onClose, onSaved }:
               {f.activo && <Check size={13} />}
             </div>
             <div className="min-w-0">
-              <div className="text-sm font-medium">Cuenta activa</div>
+              <div className="text-sm font-medium">{t('users.accountActive')}</div>
               <div className="text-xs text-ink-400 leading-snug">
-                {esYo ? 'No puede desactivar su propia cuenta.'
-                      : f.activo ? 'Al desactivarla pierde el acceso de inmediato, y es reversible.'
-                                 : 'Desactivado: no podrá iniciar sesión ni consultar datos.'}
+                {esYo ? t('users.cantDeactivateSelf')
+                      : f.activo ? t('users.deactivateWarn')
+                                 : t('users.deactivatedInfo')}
               </div>
             </div>
           </button>
@@ -258,6 +276,7 @@ function EditarUsuarioModal({ perfil, sedes, onClose, onSaved }:
 /** Eliminación definitiva de un usuario, con desactivar como alternativa. */
 function BorrarUsuario({ perfil, esYo, onDone }:
   { perfil: Perfil; esYo: boolean; onDone: () => void }) {
+  const { t } = useTranslation();
   const [abierto, setAbierto] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -269,10 +288,10 @@ function BorrarUsuario({ perfil, esYo, onDone }:
     setBusy(true);
     try {
       await eliminarUsuario(perfil.id);
-      toast.success(`${perfil.nombre} eliminado`);
+      toast.success(t('users.userDeleted', { nombre: perfil.nombre }));
       setAbierto(false); onDone();
     } catch (e: any) {
-      toast.error(e?.message ?? 'No se pudo eliminar');
+      toast.error(e?.message ?? t('users.errDelete'));
     } finally { setBusy(false); }
   };
 
@@ -280,47 +299,43 @@ function BorrarUsuario({ perfil, esYo, onDone }:
     setBusy(true);
     try {
       await actualizarPerfil(perfil.id, { activo: false });
-      toast.success(`${perfil.nombre} desactivado`);
+      toast.success(t('users.userDeactivated', { nombre: perfil.nombre }));
       setAbierto(false); onDone();
     } catch (e: any) {
-      toast.error(e?.message ?? 'No se pudo desactivar');
+      toast.error(e?.message ?? t('users.errDeactivate'));
     } finally { setBusy(false); }
   };
 
   return (
     <>
-      <button onClick={() => setAbierto(true)} title="Eliminar usuario"
+      <button onClick={() => setAbierto(true)} title={t('users.deleteUser')}
         className="btn-ghost !p-1.5 text-danger"><Trash2 size={15} /></button>
 
       <Modal open={abierto} onClose={() => !busy && setAbierto(false)} size="sm"
-        title="Eliminar usuario" subtitle={perfil.nombre}>
+        title={t('users.deleteUser')} subtitle={perfil.nombre}>
         <div className="space-y-4">
           <div className="flex items-start gap-3 p-3 rounded-xl bg-danger/10 border border-danger/25">
             <AlertTriangle size={18} className="text-danger shrink-0 mt-0.5" />
             <div className="text-sm leading-snug">
-              Eliminar borra su cuenta de acceso y su perfil de forma
-              <strong> irreversible</strong>. Si generó actas o dejó rastro en
-              auditoría, la base lo impedirá y tendrá que desactivarlo.
+              <Trans i18nKey="users.deleteWarn" components={[<strong />]} />
             </div>
           </div>
 
           {perfil.activo && (
             <p className="text-sm text-ink-500 dark:text-ink-300 leading-snug">
-              <strong>Desactivar</strong> es casi siempre la opción correcta:
-              le quita el acceso al instante, conserva su historial y se puede
-              revertir.
+              <Trans i18nKey="users.deactivateRecommend" components={[<strong />]} />
             </p>
           )}
 
           <div className="flex flex-wrap justify-end gap-2">
-            <Button disabled={busy} onClick={() => setAbierto(false)}>Cancelar</Button>
+            <Button disabled={busy} onClick={() => setAbierto(false)}>{t('common.cancel')}</Button>
             {perfil.activo && (
               <button onClick={desactivar} disabled={busy} className="btn-secondary">
-                <UserX size={15} /> Desactivar
+                <UserX size={15} /> {t('users.deactivate')}
               </button>
             )}
             <button onClick={eliminar} disabled={busy} className="btn-danger">
-              <Trash2 size={15} /> Eliminar definitivamente
+              <Trash2 size={15} /> {t('users.deleteForever')}
             </button>
           </div>
         </div>
@@ -486,6 +501,7 @@ function NuevoUsuarioModal({ open, onClose, onSaved, sedes }: { open: boolean; o
 }
 
 function CredRow({ label, value, mono }: { label: string; value: string; mono?: boolean }) {
+  const { t } = useTranslation();
   const [ok, setOk] = useState(false);
   const copy = async () => { await navigator.clipboard.writeText(value); setOk(true); setTimeout(() => setOk(false), 1500); };
   return (
@@ -493,7 +509,7 @@ function CredRow({ label, value, mono }: { label: string; value: string; mono?: 
       <label className="label">{label}</label>
       <div className="flex items-center gap-2">
         <div className={`input flex-1 truncate ${mono ? 'font-mono' : ''}`}>{value}</div>
-        <button onClick={copy} className="btn-secondary !px-3" title="Copiar">
+        <button onClick={copy} className="btn-secondary !px-3" title={t('common.copy')}>
           {ok ? <Check size={16} className="text-success" /> : <Copy size={16} />}
         </button>
       </div>

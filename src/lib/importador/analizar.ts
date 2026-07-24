@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { listColaboradores } from '@/lib/api';
 import {
   esVacio, limpio, limpioODefecto, norm, normCedula, normNombre, normSerial, nombrePropio, parseFecha,
 } from './normalizar';
@@ -598,6 +599,35 @@ export async function analizarLibro(file: File, mapeo: Mapeo): Promise<Resultado
   // --- ubicaciones mencionadas
   const ubicaciones = [...new Set(eq.equipos.map((e) => norm(e.ubicacion)).filter(Boolean))];
 
+  // --- colaboradores que ya están en la base: para avisar que una cédula del
+  // archivo ya es de otra persona (la importación no la sobrescribe). Si la
+  // consulta falla, se sigue sin el aviso en vez de tumbar el análisis.
+  const cedulasEnBase: Record<string, string> = {};
+  try {
+    for (const c of await listColaboradores()) {
+      const n = normCedula(c.cedula);
+      if (n) cedulasEnBase[n] = c.nombre;
+    }
+  } catch { /* sin conexión al catálogo: se omite el aviso */ }
+
+  // --- colaboradores de ENTRADAS cuya cédula ya es de OTRA persona en la base.
+  // No bloquea (la cédula viene del archivo y no hay dónde corregirla en la
+  // revisión), pero se avisa: la importación conserva el registro actual, así que
+  // el equipo quedaría a nombre de quien ya tiene esa cédula. Sirve para cazar
+  // errores de digitación en el Excel antes de importar.
+  for (const c of colaboradores) {
+    const n = normCedula(c.cedula);
+    const duenoEnBase = n ? cedulasEnBase[n] : undefined;
+    if (duenoEnBase && normNombre(duenoEnBase) !== normNombre(c.nombre)) {
+      reg.add({
+        tipo: 'CEDULA_EXISTENTE', severidad: 'ADVERTENCIA', hoja: 'ENTRADAS',
+        columna: 'CEDULA', valor: c.cedula,
+        mensaje: `La cédula ${c.cedula} (${c.nombre} en el archivo) ya está en el sistema a nombre de ${duenoEnBase}.`,
+        sugerencia: 'La importación no sobrescribe el registro actual. Verifica que la cédula del archivo sea la correcta.',
+      });
+    }
+  }
+
   // --- resumen de hojas: las conocidas con datos, y el resto marcadas como ignoradas
   const hojas: ResumenHoja[] = [];
   const nombresManejados = new Set<string>();
@@ -645,6 +675,7 @@ export async function analizarLibro(file: File, mapeo: Mapeo): Promise<Resultado
     pendientesCedula: [...pendientes.values()],
     conflictos: eq.conflictos,
     ubicaciones,
+    cedulasEnBase,
     duracionMs: Math.round(performance.now() - t0),
   };
 }
@@ -664,7 +695,7 @@ export function indiceCedulas(
 }
 
 /** Cómo quedó la cédula que el usuario escribió para una persona pendiente. */
-export type EstadoCedula = 'vacia' | 'invalida' | 'duplicada' | 'ok';
+export type EstadoCedula = 'vacia' | 'invalida' | 'duplicada' | 'existente' | 'ok';
 
 /**
  * Valida las cédulas que el usuario escribió en la revisión.
@@ -673,6 +704,11 @@ export type EstadoCedula = 'vacia' | 'invalida' | 'duplicada' | 'ok';
  * en un solo registro y los equipos terminan a nombre de quien no es. Por eso una cédula
  * repetida —entre las que se escribieron, o contra las que ya trae ENTRADAS— se marca
  * como `duplicada` y no deja continuar.
+ *
+ * Además, si la cédula ya pertenece a OTRA persona en la base (nombre distinto), se
+ * marca como `existente` y tampoco deja continuar: la importación conservaría el
+ * registro actual, así que escribir esa cédula aquí dejaría el equipo a nombre de
+ * quien no es. Si coincide con el mismo nombre, es la misma persona y pasa como `ok`.
  */
 export function estadoCedulas(
   r: ResultadoAnalisis,
@@ -694,10 +730,20 @@ export function estadoCedulas(
   for (const p of r.pendientesCedula) {
     const escrito = (resueltas[p.nombre] ?? '').trim();
     const n = normadas.get(p.nombre) ?? null;
+    const duenoEnBase = n ? r.cedulasEnBase[n] : undefined;
     if (!escrito) porNombre[p.nombre] = 'vacia';
     else if (!n) porNombre[p.nombre] = 'invalida';
     else if ((uso.get(n) ?? 0) > 1) porNombre[p.nombre] = 'duplicada';
+    else if (duenoEnBase && normNombre(duenoEnBase) !== normNombre(p.nombre)) {
+      porNombre[p.nombre] = 'existente';
+    }
     else { porNombre[p.nombre] = 'ok'; listas++; }
   }
   return { porNombre, listas };
+}
+
+/** El nombre del colaborador que ya tiene esa cédula en la base, si lo hay. */
+export function duenoDeCedula(r: ResultadoAnalisis, cedula: string): string | undefined {
+  const n = normCedula(cedula);
+  return n ? r.cedulasEnBase[n] : undefined;
 }

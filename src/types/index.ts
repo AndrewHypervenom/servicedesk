@@ -75,6 +75,20 @@ export interface Colaborador {
   sede_id?: string | null;    // la sede real (FK a sedes)
   activo: boolean;
   creado_en: string;
+  // --- Datos que llegan en la base mensual de Talento Humano ---
+  estado_interno?: string | null;   // ACTIVO, RENUNCIA VOLUNTARIA, …
+  fecha_ingreso?: string | null;
+  fecha_retiro?: string | null;
+  fecha_nacimiento?: string | null;
+  correo_personal?: string | null;
+  centro_costos?: string | null;
+  cc_sap?: string | null;
+  area?: string | null;
+  coordinador?: string | null;
+  gerente?: string | null;
+  termino_contrato?: string | null;
+  ciudad?: string | null;
+  actualizado_en?: string | null;
   eliminado_en?: string | null;
   eliminado_por?: string | null;
 }

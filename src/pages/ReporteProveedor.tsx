@@ -8,6 +8,7 @@ import { listProveedores, listEquipos } from '@/lib/api';
 import { exportReporteProveedor } from '@/lib/excel';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select } from '@/components/ui/Select';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { Badge } from '@/components/ui/Badge';
 
 export function ReporteProveedor() {
@@ -15,8 +16,16 @@ export function ReporteProveedor() {
   const { data: provs = [] } = useQuery({ queryKey: ['proveedores'], queryFn: listProveedores });
   const { data: equipos = [] } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
   const [prov, setProv] = useState('');
+  const [q, setQ] = useState('');
 
   const lista = useMemo(() => equipos.filter((e) => e.proveedor_propietario === prov), [equipos, prov]);
+  const visibles = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return lista;
+    return lista.filter((e) =>
+      [e.serial, e.marca, e.linea_modelo, e.codigo_interno, e.numero_contrato]
+        .some((v) => v != null && String(v).toLowerCase().includes(term)));
+  }, [lista, q]);
 
   const pdf = () => {
     const doc = new jsPDF();
@@ -67,6 +76,15 @@ export function ReporteProveedor() {
           {lista.length === 0 ? (
             <div className="py-10 text-center text-ink-400">{t('supplierReport.empty')}</div>
           ) : (
+            <>
+            {lista.length > 6 && (
+              <div className="px-5 py-3 border-b border-ink-100 dark:border-white/5">
+                <SearchInput value={q} onChange={setQ} placeholder={t('supplierReport.searchPlaceholder')} atajo={false} />
+              </div>
+            )}
+            {visibles.length === 0 ? (
+              <div className="py-10 text-center text-ink-400">{t('common.noResultsDesc')}</div>
+            ) : (
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-left text-xs uppercase text-ink-400 border-b border-ink-100 dark:border-white/5">
@@ -75,7 +93,7 @@ export function ReporteProveedor() {
                 </tr>
               </thead>
               <tbody>
-                {lista.map((e, i) => (
+                {visibles.map((e, i) => (
                   <tr key={e.id} className="border-b border-ink-50 dark:border-white/5">
                     <td className="px-5 py-2 text-ink-400">{i + 1}</td>
                     <td className="px-4 py-2 font-mono text-xs">{e.serial}</td>
@@ -87,6 +105,8 @@ export function ReporteProveedor() {
                 ))}
               </tbody>
             </table>
+            )}
+            </>
           )}
         </div>
       )}

@@ -19,10 +19,13 @@ import { exportarPdf } from '@/lib/exportarGrafico';
 import { toast } from '@/components/ui/Toast';
 import type { Equipo } from '@/types';
 
-const MESES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic'];
-
 export function Analitica() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // Nombres de mes cortos en el idioma activo (ene/jan, dic/dez…).
+  const fmtMes = useMemo(
+    () => new Intl.DateTimeFormat(i18n.language === 'pt' ? 'pt-BR' : 'es-CO', { month: 'short' }),
+    [i18n.language],
+  );
   const { perfil } = useApp();
   const oscuro = useEsOscuro();
   const paleta = paletaPara(oscuro);
@@ -64,8 +67,8 @@ export function Analitica() {
   const tipos = useMemo(() => Array.from(new Set(alcance.map((e) => e.tipo))).sort(), [alcance]);
   const nombreSede = useMemo(() => {
     const m = new Map(sedes.map((s) => [s.id, s.nombre]));
-    return (id?: string | null) => (id && m.get(id)) || 'Sin sede';
-  }, [sedes]);
+    return (id?: string | null) => (id && m.get(id)) || t('analytics.noSede');
+  }, [sedes, t]);
 
   const cuenta = (fn: (e: Equipo) => boolean) => equipos.filter(fn).length;
 
@@ -112,12 +115,12 @@ export function Analitica() {
   // Un arcoíris aquí sugeriría categorías sin orden, que es justo lo contrario.
   const porAntiguedad = useMemo(() => {
     const cubos = [
-      { name: '< 1 año', min: 0, max: 1 },
-      { name: '1–2', min: 1, max: 2 },
-      { name: '2–3', min: 2, max: 3 },
-      { name: '3–4', min: 3, max: 4 },
-      { name: '4–5', min: 4, max: 5 },
-      { name: '5+ años', min: 5, max: Infinity },
+      { name: t('analytics.ageUnder1'), min: 0, max: 1 },
+      { name: t('analytics.ageY12'), min: 1, max: 2 },
+      { name: t('analytics.ageY23'), min: 2, max: 3 },
+      { name: t('analytics.ageY34'), min: 3, max: 4 },
+      { name: t('analytics.ageY45'), min: 4, max: 5 },
+      { name: t('analytics.ageOver5'), min: 5, max: Infinity },
     ];
     const ahora = Date.now();
     return cubos.map((c) => ({
@@ -153,10 +156,10 @@ export function Analitica() {
       if (buckets.has(k)) buckets.set(k, buckets.get(k)! + 1);
     });
     return Array.from(buckets, ([k, value]) => {
-      const [, mes] = k.split('-').map(Number);
-      return { name: MESES[mes], value };
+      const [anio, mes] = k.split('-').map(Number);
+      return { name: fmtMes.format(new Date(anio, mes, 1)).replace('.', ''), value };
     });
-  }, [movs, desde12m]);
+  }, [movs, desde12m, fmtMes]);
 
   // ── Exportación ───────────────────────────────────────────────────────
   const refs = {
@@ -173,23 +176,23 @@ export function Analitica() {
     setExportando(true);
     try {
       const bloques = [
-        { titulo: 'Estado del parque', ref: refs.estado },
-        { titulo: 'Equipos por tipo', ref: refs.tipo },
-        { titulo: 'Antigüedad del parque', ref: refs.antiguedad },
-        { titulo: 'Equipos por sede', ref: refs.sede },
-        { titulo: 'Estado físico', ref: refs.fisico },
-        { titulo: 'Movimientos por mes', ref: refs.movs },
+        { titulo: t('analytics.chartEstado'), ref: refs.estado },
+        { titulo: t('analytics.chartTipo'), ref: refs.tipo },
+        { titulo: t('analytics.chartAntiguedad'), ref: refs.antiguedad },
+        { titulo: t('analytics.chartSede'), ref: refs.sede },
+        { titulo: t('analytics.chartFisico'), ref: refs.fisico },
+        { titulo: t('analytics.chartMovs'), ref: refs.movs },
       ]
         .map((b) => ({ titulo: b.titulo, contenedor: b.ref.current?.contenedor() }))
         .filter((b): b is { titulo: string; contenedor: HTMLElement } => !!b.contenedor);
 
       await exportarPdf(bloques, {
-        titulo: 'Informe de inventario',
-        subtitulo: 'Service Desk · Positivo S+ IT Solutions',
+        titulo: t('analytics.pdfTitle'),
+        subtitulo: t('analytics.pdfSubtitle'),
         fondo: superficie,
       });
     } catch (e: any) {
-      toast.error(e?.message ?? 'No se pudo generar el PDF');
+      toast.error(e?.message ?? t('analytics.errPdf'));
     } finally { setExportando(false); }
   };
 
@@ -207,22 +210,22 @@ export function Analitica() {
   };
 
   const kpis = [
-    { label: 'Equipos totales', value: total, sufijo: '' },
-    { label: 'Tasa de utilización', value: utilizacion, sufijo: '%', nota: 'Asignados sobre parque operativo' },
-    { label: 'Disponibles', value: disponibles, sufijo: '' },
-    { label: 'Contratos por vencer', value: porVencer, sufijo: '', nota: 'Rentados, próximos 30 días' },
+    { label: t('analytics.kpiTotal'), value: total, sufijo: '' },
+    { label: t('analytics.kpiUtilization'), value: utilizacion, sufijo: '%', nota: t('analytics.kpiUtilizationNote') },
+    { label: t('analytics.kpiAvailable'), value: disponibles, sufijo: '' },
+    { label: t('analytics.kpiExpiring'), value: porVencer, sufijo: '', nota: t('analytics.kpiExpiringNote') },
   ];
 
   return (
     <div>
       <PageHeader
-        title="Analítica"
-        subtitle="Indicadores del parque de equipos, listos para presentar"
+        title={t('analytics.title')}
+        subtitle={t('analytics.subtitle')}
         icon={ChartPie}
         action={
           <button onClick={pdf} disabled={exportando || isLoading} className="btn-primary shine">
             {exportando ? <Loader2 size={16} className="animate-spin" /> : <FileDown size={16} />}
-            Exportar informe PDF
+            {t('analytics.exportPdf')}
           </button>
         }
       />
@@ -231,22 +234,22 @@ export function Analitica() {
           así se ve de un vistazo qué recorte se está mirando. */}
       <div className="card p-3 mb-6 flex flex-wrap items-center gap-3">
         <select value={sedeFiltro} onChange={(e) => setSedeFiltro(e.target.value)}
-          className="input !w-auto min-w-[11rem]" aria-label="Filtrar por sede">
-          <option value="">Todas las sedes</option>
+          className="input !w-auto min-w-[11rem]" aria-label={t('analytics.filterBySede')}>
+          <option value="">{t('analytics.allSedes')}</option>
           {sedes.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
         </select>
         <select value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)}
-          className="input !w-auto min-w-[11rem]" aria-label="Filtrar por tipo">
-          <option value="">Todos los tipos</option>
+          className="input !w-auto min-w-[11rem]" aria-label={t('analytics.filterByTipo')}>
+          <option value="">{t('analytics.allTypes')}</option>
           {tipos.map((tp) => <option key={tp} value={tp}>{t(`tipo.${tp}`)}</option>)}
         </select>
         {(sedeFiltro || tipoFiltro) && (
           <button onClick={() => { setSedeFiltro(''); setTipoFiltro(''); }} className="btn-ghost text-sm">
-            Limpiar filtros
+            {t('common.clearFilters')}
           </button>
         )}
         <span className="ml-auto text-sm text-ink-400">
-          {total.toLocaleString('es-CO')} equipos en la selección
+          {t('analytics.selectionCount', { count: total })}
         </span>
       </div>
 
@@ -266,9 +269,9 @@ export function Analitica() {
       </div>
 
       <div className="grid lg:grid-cols-2 gap-6">
-        <GraficoCard ref={refs.estado} titulo="Estado del parque" fondoExport={superficie}
-          lectura="Dónde está cada equipo ahora mismo."
-          tabla={{ columnas: [{ key: 'name', label: 'Estado' }, { key: 'value', label: 'Equipos' }], filas: porEstado }}
+        <GraficoCard ref={refs.estado} titulo={t('analytics.chartEstado')} fondoExport={superficie}
+          lectura={t('analytics.readEstado')}
+          tabla={{ columnas: [{ key: 'name', label: t('analytics.colEstado') }, { key: 'value', label: t('analytics.colEquipos') }], filas: porEstado }}
           className="group/card">
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={porEstado} layout="vertical" margin={{ left: 8, right: 40 }}>
@@ -284,9 +287,9 @@ export function Analitica() {
           </ResponsiveContainer>
         </GraficoCard>
 
-        <GraficoCard ref={refs.tipo} titulo="Equipos por tipo" fondoExport={superficie}
-          lectura="Qué compone el parque, de mayor a menor."
-          tabla={{ columnas: [{ key: 'name', label: 'Tipo' }, { key: 'value', label: 'Equipos' }], filas: porTipo }}
+        <GraficoCard ref={refs.tipo} titulo={t('analytics.chartTipo')} fondoExport={superficie}
+          lectura={t('analytics.readTipo')}
+          tabla={{ columnas: [{ key: 'name', label: t('analytics.colTipo') }, { key: 'value', label: t('analytics.colEquipos') }], filas: porTipo }}
           className="group/card">
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={porTipo} layout="vertical" margin={{ left: 8, right: 40 }}>
@@ -302,9 +305,9 @@ export function Analitica() {
           </ResponsiveContainer>
         </GraficoCard>
 
-        <GraficoCard ref={refs.antiguedad} titulo="Antigüedad del parque" fondoExport={superficie}
-          lectura="Cuánto lleva cada equipo en servicio. Los tramos altos anticipan renovación."
-          tabla={{ columnas: [{ key: 'name', label: 'Antigüedad' }, { key: 'value', label: 'Equipos' }], filas: porAntiguedad }}
+        <GraficoCard ref={refs.antiguedad} titulo={t('analytics.chartAntiguedad')} fondoExport={superficie}
+          lectura={t('analytics.readAntiguedad')}
+          tabla={{ columnas: [{ key: 'name', label: t('analytics.colAntiguedad') }, { key: 'value', label: t('analytics.colEquipos') }], filas: porAntiguedad }}
           className="group/card">
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={porAntiguedad} margin={{ left: -18, top: 16 }}>
@@ -325,9 +328,9 @@ export function Analitica() {
           </ResponsiveContainer>
         </GraficoCard>
 
-        <GraficoCard ref={refs.sede} titulo="Equipos por sede" fondoExport={superficie}
-          lectura="Las diez sedes con más equipos asignados."
-          tabla={{ columnas: [{ key: 'name', label: 'Sede' }, { key: 'value', label: 'Equipos' }], filas: porSede }}
+        <GraficoCard ref={refs.sede} titulo={t('analytics.chartSede')} fondoExport={superficie}
+          lectura={t('analytics.readSede')}
+          tabla={{ columnas: [{ key: 'name', label: t('analytics.colSede') }, { key: 'value', label: t('analytics.colEquipos') }], filas: porSede }}
           className="group/card">
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={porSede} layout="vertical" margin={{ left: 8, right: 40 }}>
@@ -342,9 +345,9 @@ export function Analitica() {
           </ResponsiveContainer>
         </GraficoCard>
 
-        <GraficoCard ref={refs.fisico} titulo="Estado físico" fondoExport={superficie}
-          lectura="Salud del parque. Con falla y dañado son los que exigen acción."
-          tabla={{ columnas: [{ key: 'name', label: 'Estado' }, { key: 'value', label: 'Equipos' }], filas: porEstadoFisico }}
+        <GraficoCard ref={refs.fisico} titulo={t('analytics.chartFisico')} fondoExport={superficie}
+          lectura={t('analytics.readFisico')}
+          tabla={{ columnas: [{ key: 'name', label: t('analytics.colEstado') }, { key: 'value', label: t('analytics.colEquipos') }], filas: porEstadoFisico }}
           className="group/card">
           <ResponsiveContainer width="100%" height={260}>
             <BarChart data={porEstadoFisico} layout="vertical" margin={{ left: 8, right: 40 }}>
@@ -362,9 +365,9 @@ export function Analitica() {
           </ResponsiveContainer>
         </GraficoCard>
 
-        <GraficoCard ref={refs.movs} titulo="Movimientos por mes" fondoExport={superficie}
-          lectura="Actividad de los últimos 12 meses: asignaciones, devoluciones y bajas."
-          tabla={{ columnas: [{ key: 'name', label: 'Mes' }, { key: 'value', label: 'Movimientos' }], filas: movPorMes }}
+        <GraficoCard ref={refs.movs} titulo={t('analytics.chartMovs')} fondoExport={superficie}
+          lectura={t('analytics.readMovs')}
+          tabla={{ columnas: [{ key: 'name', label: t('analytics.colMes') }, { key: 'value', label: t('analytics.colMovimientos') }], filas: movPorMes }}
           className="group/card">
           <ResponsiveContainer width="100%" height={260}>
             <AreaChart data={movPorMes} margin={{ left: -18, top: 8 }}>

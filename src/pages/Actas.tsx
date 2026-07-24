@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { FileSignature, ExternalLink, CheckCircle2, Mail, Printer, PenLine, Upload, FileCheck2, Eye } from 'lucide-react';
+import { FileSignature, ExternalLink, CheckCircle2, Mail, Printer, PenLine, Upload, FileCheck2, Eye, SearchX } from 'lucide-react';
 import { listActas, listEquipos, listColaboradores, updateActa, subirPdfActa, subirActaFirmada } from '@/lib/api';
 import { generarActaPdf, abrirBlob, imprimirBlob, type ActaItem } from '@/lib/pdf';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { SearchInput } from '@/components/ui/SearchInput';
 import { Badge } from '@/components/ui/Badge';
 import { Modal } from '@/components/ui/Modal';
 import { SignaturePad, type SignatureHandle } from '@/components/ui/SignaturePad';
@@ -24,6 +25,7 @@ export function Actas() {
   const { data: colaboradores = [] } = useQuery({ queryKey: ['colaboradores'], queryFn: listColaboradores });
 
   const [firmando, setFirmando] = useState<Acta | null>(null);
+  const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
   const sigRef = useRef<SignatureHandle>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -31,6 +33,19 @@ export function Actas() {
 
   const equiposById = useMemo(() => new Map(equipos.map((e) => [e.id, e])), [equipos]);
   const colabByCedula = useMemo(() => new Map(colaboradores.map((c) => [c.cedula, c])), [colaboradores]);
+
+  const actasFiltradas = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return actas;
+    return actas.filter((a) => {
+      const colab = a.cedula_colaborador ? colabByCedula.get(a.cedula_colaborador) : null;
+      const seriales = (a.items?.length ? a.items.map((i) => i.equipo_id) : a.equipo_id ? [a.equipo_id] : [])
+        .map((id) => equiposById.get(id)?.serial ?? '');
+      const tipoLabel = t(`movimiento.${a.tipo === 'ENTREGA' ? 'ASIGNACION' : 'DEVOLUCION_COLABORADOR'}`);
+      return [a.consecutivo, a.cedula_colaborador, colab?.nombre, tipoLabel, ...seriales]
+        .some((v) => v?.toLowerCase().includes(term));
+    });
+  }, [actas, q, colabByCedula, equiposById, t]);
 
   const generarPdf = async (a: Acta) => {
     const snapshots = a.items?.length
@@ -109,9 +124,19 @@ export function Actas() {
         onChange={(e) => subirArchivo(e.target.files?.[0])}
       />
 
+      {!isLoading && actas.length > 0 && (
+        <div className="card p-4 mb-5">
+          <SearchInput value={q} onChange={setQ} placeholder={t('acta.searchPlaceholder')} />
+        </div>
+      )}
+
       {!isLoading && actas.length === 0 ? (
         <div className="card">
           <EmptyState icon={FileSignature} title={t('acta.emptyTitle')} description={t('acta.emptyDesc')} />
+        </div>
+      ) : !isLoading && actasFiltradas.length === 0 ? (
+        <div className="card">
+          <EmptyState icon={SearchX} title={t('common.noResultsTitle')} description={t('common.noResultsDesc')} />
         </div>
       ) : (
         <div className="card overflow-hidden">
@@ -128,7 +153,7 @@ export function Actas() {
             </thead>
             <tbody>
               {isLoading && <SkeletonRows rows={6} cols={5} />}
-              {!isLoading && actas.map((a) => (
+              {!isLoading && actasFiltradas.map((a) => (
                 <tr key={a.id} className="border-b border-ink-50 dark:border-white/5 hover:bg-ink-50/60 dark:hover:bg-white/5">
                   <td className="px-5 py-3 font-mono text-xs">{a.consecutivo}</td>
                   <td className="px-4 py-3"><Badge>{t(`movimiento.${a.tipo === 'ENTREGA' ? 'ASIGNACION' : 'DEVOLUCION_COLABORADOR'}`)}</Badge></td>

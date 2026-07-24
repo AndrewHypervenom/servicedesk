@@ -1,12 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import { motion, AnimatePresence, animate } from 'framer-motion';
 import {
-  ArrowRight, Check, CheckCircle2, FileSpreadsheet, Loader2, RotateCcw, Upload,
+  AlertTriangle, ArrowRight, Check, CheckCircle2, FileSpreadsheet, Loader2,
+  RotateCcw, Upload, UserPlus, Users,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toast';
-import { listSedes } from '@/lib/api';
+import { listColaboradores, listSedes } from '@/lib/api';
+import { fmtDate } from '@/lib/format';
 import { analizarLibro, detectarHojas, estadoCedulas } from '@/lib/importador/analizar';
 import { aplicarImportacion } from '@/lib/importador/aplicar';
 import { HOJAS } from '@/lib/importador/campos';
@@ -60,6 +63,12 @@ function Contador({ hasta }: { hasta: number }) {
 
 export function ImportarModal({ open, onClose, onImportado }: Props) {
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
+  // La importación cruza los movimientos (SALIDAS/ENTRADAS) con la planta por
+  // cédula: sin colaboradores cargados, o con la lista vieja, esos cruces fallan
+  // y quedan seriales o cédulas huérfanas. Por eso se avisa antes de cargar.
+  const { data: colaboradores = [], isLoading: cargandoColabs } = useQuery({
+    queryKey: ['colaboradores'], queryFn: listColaboradores,
+  });
 
   const [paso, setPaso] = useState<Paso>('archivo');
   const [archivo, setArchivo] = useState<File | null>(null);
@@ -82,6 +91,16 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
     setProgreso(null);
     setSalida(null);
   }, []);
+
+  // La fecha más reciente de la planta, para dar señal de qué tan al día está.
+  const ultimaColabs = useMemo(() => {
+    let max = '';
+    for (const c of colaboradores) {
+      const d = c.actualizado_en ?? c.creado_en ?? '';
+      if (d > max) max = d;
+    }
+    return max || null;
+  }, [colaboradores]);
 
   const cerrar = () => {
     // Cerrar en mitad de la escritura dejaría la base a medias sin que nadie lo sepa.
@@ -238,6 +257,50 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
         {/* ------------------------------------------------------- archivo */}
         {paso === 'archivo' && (
           <motion.div key="archivo" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
+            {!cargandoColabs && (
+              colaboradores.length === 0 ? (
+                // Sin planta cargada, ninguna asignación del Excel podrá cruzarse
+                // con una persona: primero hay que cargar los colaboradores.
+                <div className="mb-5 flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/[0.08] p-4">
+                  <AlertTriangle size={18} className="shrink-0 mt-0.5 text-amber-600 dark:text-warning" />
+                  <div className="text-sm">
+                    <p className="font-medium text-amber-700 dark:text-warning">Primero carga los colaboradores</p>
+                    <p className="mt-0.5 text-ink-500 dark:text-ink-300">
+                      Aún no hay colaboradores en el sistema. Las asignaciones del Excel se cruzan
+                      por cédula con la planta, así que sin ella la importación quedará incompleta.
+                    </p>
+                    <Link
+                      to="/colaboradores"
+                      onClick={cerrar}
+                      className="mt-2 inline-flex items-center gap-1.5 font-medium text-brand-600 dark:text-brand-400 hover:underline"
+                    >
+                      <UserPlus size={14} /> Cargar la base de colaboradores
+                    </Link>
+                  </div>
+                </div>
+              ) : (
+                // Hay planta, pero si está desactualizada las cédulas nuevas no
+                // cruzarán. Se recuerda mantenerla al día antes de importar.
+                <div className="mb-5 flex items-start gap-3 rounded-xl border border-brand-500/25 bg-brand-500/[0.06] p-4">
+                  <Users size={18} className="shrink-0 mt-0.5 text-brand-600 dark:text-brand-400" />
+                  <div className="text-sm">
+                    <p className="font-medium">Revisa que los colaboradores estén al día</p>
+                    <p className="mt-0.5 text-ink-500 dark:text-ink-300">
+                      Hay <strong className="text-ink-700 dark:text-ink-100">{colaboradores.length}</strong> colaboradores
+                      {ultimaColabs && <> (última actualización {fmtDate(ultimaColabs)})</>}. Si la lista está
+                      vieja, las asignaciones a personas nuevas no cruzarán y quedarán cédulas por resolver.
+                    </p>
+                    <Link
+                      to="/colaboradores"
+                      onClick={cerrar}
+                      className="mt-2 inline-flex items-center gap-1.5 font-medium text-brand-600 dark:text-brand-400 hover:underline"
+                    >
+                      <Users size={14} /> Actualizar la base de colaboradores
+                    </Link>
+                  </div>
+                </div>
+              )
+            )}
             <div
               onDragOver={(e) => { e.preventDefault(); setArrastrando(true); }}
               onDragLeave={() => setArrastrando(false)}

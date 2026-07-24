@@ -34,11 +34,11 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const items: Item[] = [
     { to: '/', icon: LayoutDashboard, label: t('nav.dashboard') },
     { to: '/analitica', icon: ChartPie, label: t('nav.analytics'), roles: RUTA_ROLES['/analitica'] },
+    { to: '/colaboradores', icon: Users, label: t('nav.collaborators'), roles: RUTA_ROLES['/colaboradores'] },
     { to: '/inventario', icon: Boxes, label: t('nav.inventory') },
     { to: '/asignar', icon: UserPlus, label: t('nav.assign'), roles: RUTA_ROLES['/asignar'] },
     { to: '/devolucion', icon: Undo2, label: t('nav.return'), roles: RUTA_ROLES['/devolucion'] },
     { to: '/escanear', icon: ScanLine, label: t('nav.scan'), roles: RUTA_ROLES['/escanear'] },
-    { to: '/colaboradores', icon: Users, label: t('nav.collaborators'), roles: RUTA_ROLES['/colaboradores'] },
     { to: '/actas', icon: FileSignature, label: t('nav.actas') },
     { to: '/proveedores', icon: Truck, label: t('nav.suppliers'), roles: RUTA_ROLES['/proveedores'] },
     { to: '/reporte-proveedor', icon: PackageOpen, label: t('nav.supplierReport'), roles: RUTA_ROLES['/reporte-proveedor'] },
