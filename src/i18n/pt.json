@@ -112,7 +112,9 @@
     "selected_one": "{{count}} selecionado",
     "selected_other": "{{count}} selecionados",
     "retry": "Tentar novamente",
-    "saving": "Salvando…"
+    "saving": "Salvando…",
+    "crashTitle": "Não foi possível exibir esta tela",
+    "crashDesc": "Ocorreu um erro ao renderizar a tela. O detalhe abaixo indica o que falhou; você pode tentar novamente ou mudar de tela."
   },
   "auth": {
     "login": "Entrar",

@@ -112,7 +112,9 @@
     "selected_one": "{{count}} seleccionado",
     "selected_other": "{{count}} seleccionados",
     "retry": "Reintentar",
-    "saving": "Guardando…"
+    "saving": "Guardando…",
+    "crashTitle": "No se pudo mostrar esta vista",
+    "crashDesc": "Ocurrió un error al pintar la pantalla. El detalle de abajo indica qué falló; puedes reintentar o cambiar de vista."
   },
   "auth": {
     "login": "Iniciar sesión",

@@ -138,6 +138,28 @@ body {
   100% { transform: translateX(100%); }
 }
 
+/* Entrada de página. Anima SOLO `transform`, nunca la opacidad, y eso es la
+   corrección entera del bug de "las vistas se quedan en blanco".
+
+   Con la pestaña en segundo plano el navegador congela el reloj de animación:
+   `playState` sigue en "running" pero `currentTime` no avanza de 0. El elemento
+   se queda clavado en el primer fotograma de forma indefinida. Le pasa igual a
+   framer-motion, que además mueve todo su bucle sobre requestAnimationFrame y
+   no escucha `visibilitychange` (comprobado en la 11.18: ni una referencia en
+   el paquete).
+
+   Así que el primer fotograma tiene que ser un estado en el que la página se
+   pueda leer. Con `opacity: 0` ahí, navegar con la pestaña oculta dejaba el
+   contenido montado, con datos y totalmente invisible — solo se veía el
+   armazón, que es lo único que no se anima. Con solo `transform`, el peor caso
+   es una página perfectamente legible desplazada 8px. */
+@keyframes page-enter {
+  from { transform: translateY(8px); }
+}
+.page-enter {
+  animation: page-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
 @keyframes aurora-drift {
   0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
   33%      { transform: translate3d(4%, -3%, 0) scale(1.12); }
