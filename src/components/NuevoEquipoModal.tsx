@@ -11,6 +11,8 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { useApp } from '@/store/useApp';
+import { useEditingPresence } from '@/lib/presence/hooks';
+import { CoeditBanner } from '@/components/presence';
 import type { Equipo } from '@/types';
 
 const TIPOS = ['PORTATIL', 'ESCRITORIO', 'CELULAR', 'MONITOR', 'PERIFERICO', 'BASE_RECALENTAMIENTO', 'CARGADOR', 'OTRO'];
@@ -54,6 +56,13 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
   const { data: colaboradores = [], isLoading: cargandoColabs } = useQuery({ queryKey: ['colaboradores'], queryFn: listColaboradores });
   const sedeFija = perfil?.rol === 'JEFE_SEDE' || perfil?.rol === 'TECNICO';
   const editando = !!equipo;
+
+  // Solo la edición de un equipo existente es un recurso concreto que puede
+  // pisarse; el alta no tiene id todavía. Declaro edición mientras el modal esté
+  // abierto y recibo a los coeditores.
+  const coeditores = useEditingPresence(
+    open && equipo ? { type: 'equipo', id: equipo.id, title: `${equipo.marca} ${equipo.linea_modelo}` } : null,
+  );
 
   // La fecha más reciente de la planta, para señalar qué tan al día está.
   const ultimaColabs = useMemo(() => {
@@ -129,6 +138,8 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
 
   return (
     <Modal open={open} onClose={onClose} title={editando ? t('form.editTitle') : t('form.newTitle')} subtitle={editando ? t('form.editSub') : t('form.newSub')} size="lg">
+      {coeditores.length > 0 && <CoeditBanner peers={coeditores} className="mb-4" />}
+
       {/* Al crear o editar: el equipo se asigna a una persona, y esa persona
           debe existir en la planta y estar al día para evitar errores. */}
       {!cargandoColabs && (

@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Menu, Sun, Moon, Monitor, LogOut } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useApp } from '@/store/useApp';
+import { PresenceBar } from '@/components/presence';
 import { initials } from '@/lib/format';
 import { useState } from 'react';
 import clsx from 'clsx';
@@ -33,6 +34,9 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
       <button onClick={onMenu} className="btn-ghost !p-2 lg:hidden"><Menu size={20} /></button>
 
       <div className="flex-1" />
+
+      {/* Quién está en línea (presencia en tiempo real) */}
+      <PresenceBar />
 
       {/* Idioma */}
       <div className={riel}>

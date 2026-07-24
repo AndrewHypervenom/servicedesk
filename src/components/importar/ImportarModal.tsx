@@ -17,6 +17,8 @@ import { normCedula, normNombre } from '@/lib/importador/normalizar';
 import type {
   Mapeo, ProgresoAplicacion, Resoluciones, ResultadoAnalisis, ResultadoAplicacion,
 } from '@/lib/importador/tipos';
+import { useEditingPresence } from '@/lib/presence/hooks';
+import { CoeditBanner } from '@/components/presence';
 import { AnalisisVisual, duracionAnimacion } from './AnalisisVisual';
 import { PanelMapeo } from './PanelMapeo';
 import { PanelRevision } from './PanelRevision';
@@ -62,6 +64,12 @@ function Contador({ hasta }: { hasta: number }) {
 }
 
 export function ImportarModal({ open, onClose, onImportado }: Props) {
+  // Dos personas importando al inventario a la vez es un choque grave (las dos
+  // escriben sobre la misma planta). El recurso es difuso, así que se usa un id
+  // fijo para la operación de importación de equipos.
+  const coeditores = useEditingPresence(
+    open ? { type: 'importacion', id: 'equipos', title: 'Importación de inventario' } : null,
+  );
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
   // La importación cruza los movimientos (SALIDAS/ENTRADAS) con la planta por
   // cédula: sin colaboradores cargados, o con la lista vieja, esos cruces fallan
@@ -253,6 +261,8 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
 
   return (
     <Modal open={open} onClose={cerrar} size="lg" title={titulos[paso].t} subtitle={titulos[paso].s}>
+      {coeditores.length > 0 && <CoeditBanner peers={coeditores} className="mb-4" />}
+
       <AnimatePresence mode="wait">
         {/* ------------------------------------------------------- archivo */}
         {paso === 'archivo' && (

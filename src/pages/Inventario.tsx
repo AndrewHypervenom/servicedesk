@@ -18,6 +18,7 @@ import { SkeletonCards } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { NuevoEquipoModal } from '@/components/NuevoEquipoModal';
 import { ImportarModal } from '@/components/importar/ImportarModal';
+import { ResourcePeersChip } from '@/components/presence';
 import { useApp } from '@/store/useApp';
 import { scopeEquipos } from '@/lib/roles';
 import type { Equipo } from '@/types';
@@ -79,10 +80,14 @@ export function Inventario() {
       className: '!px-5',
       headerClassName: '!px-5',
       cell: (e) => (
-        <Link to={`/equipo/${e.id}`} className="block">
-          <div className="font-medium">{e.marca} {e.linea_modelo}<VenceAlert e={e} /></div>
-          <div className="text-xs text-ink-400">{e.codigo_qr}</div>
-        </Link>
+        <div className="flex items-center gap-2">
+          <Link to={`/equipo/${e.id}`} className="block min-w-0">
+            <div className="font-medium">{e.marca} {e.linea_modelo}<VenceAlert e={e} /></div>
+            <div className="text-xs text-ink-400">{e.codigo_qr}</div>
+          </Link>
+          {/* Quién tiene este equipo abierto ahora mismo. */}
+          <ResourcePeersChip type="equipo" id={e.id} />
+        </div>
       ),
     },
     {

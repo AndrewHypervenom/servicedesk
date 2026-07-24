@@ -40,6 +40,8 @@ import { ImportarBaseModal } from '@/components/colaboradores/ImportarBaseModal'
 import {
   actualizarColaborador, campoDuplicado, crearColaborador, listColaboradores, listSedes,
 } from '@/lib/api';
+import { useEditingPresence } from '@/lib/presence/hooks';
+import { CoeditBanner, ResourcePeersChip } from '@/components/presence';
 import { colorEstatus, esEstatusActivo, estatusLegible } from '@/lib/colaboradores/estatus';
 import { exportRowsExcel } from '@/lib/excel';
 import { fmtDate, initials } from '@/lib/format';
@@ -110,6 +112,12 @@ export function Colaboradores() {
   const [editando, setEditando] = useState<string | null>(null);
   const [f, setF] = useState<Partial<Colaborador>>({});
   const [busy, setBusy] = useState(false);
+
+  // Presencia: declaro que edito ESTA persona mientras el modal de edición esté
+  // abierto (el alta no tiene cédula fija todavía) y recibo a los coeditores.
+  const coeditores = useEditingPresence(
+    open && editando ? { type: 'colaborador', id: editando, title: f.nombre } : null,
+  );
 
   const cambiarVista = (v: 'tarjetas' | 'tabla') => { setVista(v); localStorage.setItem('colabsVista', v); };
 
@@ -266,6 +274,7 @@ export function Colaboradores() {
             </span>
             <span className="block text-xs text-ink-400">C.C. {c.cedula}</span>
           </span>
+          <ResourcePeersChip type="colaborador" id={c.cedula} />
         </button>
       ),
     },
@@ -564,10 +573,11 @@ export function Colaboradores() {
                 <div className="w-11 h-11 shrink-0 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center font-bold">
                   {initials(c.nombre)}
                 </div>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="font-medium truncate">{c.nombre}</div>
                   <div className="text-xs text-ink-400">C.C. {c.cedula}</div>
                 </div>
+                <ResourcePeersChip type="colaborador" id={c.cedula} />
               </div>
 
               <div className="flex flex-wrap gap-1.5 mb-3">
@@ -634,6 +644,8 @@ export function Colaboradores() {
         title={editando ? t('collaborators.edit') : t('collaborators.new')}
         subtitle={editando ? t('collaborators.editHint') : undefined}
       >
+        {coeditores.length > 0 && <CoeditBanner peers={coeditores} className="mb-4" />}
+
         <div className="space-y-5">
           <div className="grid sm:grid-cols-2 gap-4">
             <div>

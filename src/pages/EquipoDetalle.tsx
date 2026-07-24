@@ -16,6 +16,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Skeleton, SkeletonText } from '@/components/ui/Skeleton';
 import { NuevoEquipoModal } from '@/components/NuevoEquipoModal';
 import { useApp } from '@/store/useApp';
+import { useViewingPresence } from '@/lib/presence/hooks';
+import { CoeditBanner } from '@/components/presence';
 import type { Colaborador } from '@/types';
 
 export function EquipoDetalle() {
@@ -31,6 +33,12 @@ export function EquipoDetalle() {
 
   const { data: equipo, isLoading, refetch } = useQuery({ queryKey: ['equipo', id], queryFn: () => getEquipo(id) });
   const { data: movs = [], refetch: refetchMovs } = useQuery({ queryKey: ['traz', id], queryFn: () => trazabilidad(id) });
+
+  // Presencia: declaro que estoy VIENDO este equipo y recibo a los demás que lo
+  // tienen abierto. El banner avisa si alguien lo está editando ahora mismo.
+  const coeditores = useViewingPresence(
+    equipo ? { type: 'equipo', id, title: `${equipo.marca} ${equipo.linea_modelo}` } : null,
+  );
 
   useEffect(() => { if (equipo) equipoQrDataUrl(equipo.codigo_qr, 300).then(setQr); }, [equipo]);
   useEffect(() => { if (equipo?.cedula_asignado) getColaborador(equipo.cedula_asignado).then(setColab); else setColab(null); }, [equipo]);
@@ -91,6 +99,8 @@ export function EquipoDetalle() {
   return (
     <div>
       <button onClick={() => navigate(-1)} className="btn-ghost mb-4 !px-2"><ArrowLeft size={18} /> {t('common.back')}</button>
+
+      {coeditores.length > 0 && <CoeditBanner peers={coeditores} className="mb-4" />}
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="lg:col-span-2 space-y-6">

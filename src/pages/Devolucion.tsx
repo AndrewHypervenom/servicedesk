@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import { Undo2, Search, Warehouse, Truck, FileSignature, Eye, Check, X, Plus, PackageX } from 'lucide-react';
-import { listEquipos, listProveedores, getColaborador, devolverEquipo, createActa, subirPdfActa, subirActaFirmada } from '@/lib/api';
+import { listEquipos, listProveedores, getColaborador, devolverEquipo, createActa, updateActa, deleteActa, subirPdfActa, subirActaFirmada } from '@/lib/api';
 import { generarActaPdf, abrirBlob, type ActaItem } from '@/lib/pdf';
 import { ACTA_DEVOLUCION } from '@/lib/actaTemplates';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -14,7 +14,9 @@ import { EstadoBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { useApp } from '@/store/useApp';
-import type { Equipo } from '@/types';
+import { usePeersDeRecursos } from '@/lib/presence/hooks';
+import { PresenceMarker, CoeditBanner } from '@/components/presence';
+import type { Acta, Equipo } from '@/types';
 
 export function Devolucion() {
   const { t } = useTranslation();
@@ -30,8 +32,15 @@ export function Devolucion() {
   const [novedades, setNovedades] = useState('');
   const [busy, setBusy] = useState(false);
   const firmaRef = useRef<FirmaActaHandle>(null);
+  // Acta reservada: se crea al descargarla para firmar a mano, para que el
+  // papel salga con su consecutivo definitivo y no con un marcador.
+  const borradorRef = useRef<Acta | null>(null);
 
   const seleccionados = Object.values(sel);
+
+  // Presencia: declaro edición sobre CADA equipo que estoy devolviendo (un
+  // marcador por ítem) y reúno a los coeditores de cualquiera de ellos.
+  const coeditores = usePeersDeRecursos('equipo', seleccionados.map((e) => e.id));
 
   // Solo se devuelve lo que está en manos de alguien: un equipo DISPONIBLE ya
   // está en bodega y no hay nada que devolver.
@@ -63,18 +72,54 @@ export function Devolucion() {
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
   };
 
+  /**
+   * Devuelve el acta de este flujo, creándola la primera vez. Al descargarla
+   * para firmar en físico hay que reservar ya el consecutivo, porque es el que
+   * queda impreso en el papel que firma el colaborador.
+   */
+  const asegurarActa = async (): Promise<Acta> => {
+    const datos = {
+      tipo: 'DEVOLUCION' as const, equipo_id: seleccionados[0].id,
+      items: seleccionados.map((e) => ({ equipo_id: e.id, observaciones: obs[e.id] })),
+      cedula_colaborador: seleccionados[0].cedula_asignado, observaciones: novedades,
+    };
+    const previo = borradorRef.current;
+    if (previo) {
+      // Pudo cambiar equipos u observaciones después de descargar: se refresca
+      // el registro conservando el consecutivo ya reservado.
+      await updateActa(previo.id, datos);
+      borradorRef.current = { ...previo, ...datos };
+      return borradorRef.current;
+    }
+    const acta = await createActa({ ...datos, firmado: false });
+    borradorRef.current = acta;
+    return acta;
+  };
+
+  /** Suelta el acta reservada si el técnico abandona el flujo sin finalizar. */
+  const descartarBorrador = () => {
+    const b = borradorRef.current;
+    borradorRef.current = null;
+    // Si el borrado falla (p. ej. por RLS) el acta queda visible en la lista
+    // como pendiente de firma, que es recuperable; no vale romper el flujo.
+    if (b) deleteActa(b.id).catch(() => { /* noop */ });
+  };
+
+  useEffect(() => descartarBorrador, []);
+
   // Acta sin firmar para el flujo manual (descargar, firmar a mano, subir).
   const descargarParaFirmar = async () => {
     if (!seleccionados.length) { toast.error(t('assign.noneSelected')); return; }
     try {
       const primero = seleccionados[0];
       const colab = primero.cedula_asignado ? await getColaborador(primero.cedula_asignado) : null;
+      const acta = await asegurarActa();
       const blob = await generarActaPdf({
-        tipo: 'DEVOLUCION', consecutivo: 'ACTA', items: buildItems(),
+        tipo: 'DEVOLUCION', consecutivo: acta.consecutivo || 'ACTA', items: buildItems(),
         colaborador: colab, tecnico: perfil?.nombre, tecnicoCedula: perfil?.cedula ?? undefined,
         firmaTecnicoDataUrl: perfil?.firma_data, novedades,
       });
-      abrirBlob(blob, `acta-devolucion-${primero.serial}.pdf`);
+      abrirBlob(blob, `${acta.consecutivo || `acta-devolucion-${primero.serial}`}.pdf`);
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
   };
 
@@ -89,26 +134,36 @@ export function Devolucion() {
     try {
       const primero = seleccionados[0];
       const colab = primero.cedula_asignado ? await getColaborador(primero.cedula_asignado) : null;
-      const acta = await createActa({
-        tipo: 'DEVOLUCION', equipo_id: primero.id,
-        items: seleccionados.map((e) => ({ equipo_id: e.id, observaciones: obs[e.id] })),
-        cedula_colaborador: primero.cedula_asignado, firma_data: firma,
-        firmado: !!firma || !!archivoFirmado, observaciones: novedades,
-      });
-      const blob = await generarActaPdf({
-        tipo: 'DEVOLUCION', consecutivo: acta.consecutivo || 'ACTA', items: buildItems(),
-        colaborador: colab, firmaDataUrl: firma, tecnico: perfil?.nombre,
-        tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: perfil?.firma_data, novedades,
-      });
-      await subirPdfActa(acta.id, blob);
-      if (archivoFirmado) await subirActaFirmada(acta.id, archivoFirmado);
+      // Reutiliza el acta ya reservada si se descargó para firmar a mano, así
+      // el consecutivo del papel firmado es el que queda guardado.
+      const acta = await asegurarActa();
+      // Firma física: el acta oficial es el escaneo firmado a mano; no se
+      // guarda además la versión de firma digital (iría sin firma real).
+      let documento: Blob;
+      let nombreDoc: string;
+      if (archivoFirmado) {
+        await subirActaFirmada(acta.id, archivoFirmado);
+        documento = archivoFirmado;
+        nombreDoc = archivoFirmado.name;
+      } else {
+        await updateActa(acta.id, { firma_data: firma, firmado: !!firma });
+        documento = await generarActaPdf({
+          tipo: 'DEVOLUCION', consecutivo: acta.consecutivo || 'ACTA', items: buildItems(),
+          colaborador: colab, firmaDataUrl: firma, tecnico: perfil?.nombre,
+          tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: perfil?.firma_data, novedades,
+        });
+        await subirPdfActa(acta.id, documento);
+        nombreDoc = `${acta.consecutivo || 'acta'}.pdf`;
+      }
+      // Ya está firmada y guardada: deja de ser un borrador descartable.
+      borradorRef.current = null;
       for (const e of seleccionados) {
         await devolverEquipo({
           equipoId: e.id, aProveedor: destino === 'proveedor', proveedor: proveedor || undefined,
           actaId: acta.id, registradoPor: perfil?.cedula || perfil?.nombre, obs: obs[e.id] || novedades,
         });
       }
-      abrirBlob(blob, `${acta.consecutivo || 'acta'}.pdf`);
+      abrirBlob(documento, nombreDoc);
       toast.success(t('return.done'));
       setSel({}); setObs({}); setNovedades(''); setProveedor(''); refetch();
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
@@ -118,6 +173,13 @@ export function Devolucion() {
   return (
     <div className="max-w-3xl mx-auto">
       <PageHeader title={t('return.title')} subtitle={t('return.subtitle')} icon={Undo2} />
+
+      {/* Un marcador de presencia por equipo seleccionado (no pintan nada). */}
+      {seleccionados.map((e) => (
+        <PresenceMarker key={e.id} type="equipo" id={e.id} title={`${e.marca} ${e.linea_modelo}`} detail="En devolución" />
+      ))}
+
+      {coeditores.length > 0 && <CoeditBanner peers={coeditores} className="mb-4" />}
 
       <div className="card p-6 space-y-5">
         <div>

@@ -6,6 +6,8 @@ import { transicionesEstado } from '@/lib/estados';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
+import { useEditingPresence } from '@/lib/presence/hooks';
+import { CoeditBanner } from '@/components/presence';
 import type { Equipo, EstadoAsignacion } from '@/types';
 
 /**
@@ -20,6 +22,10 @@ export function CambiarEstadoModal({ equipo, onClose, onSaved }: {
   const [nuevo, setNuevo] = useState<EstadoAsignacion | null>(null);
   const [obs, setObs] = useState('');
   const [busy, setBusy] = useState(false);
+
+  const coeditores = useEditingPresence(
+    equipo ? { type: 'equipo', id: equipo.id, title: `${equipo.marca} ${equipo.linea_modelo}` } : null,
+  );
 
   // El equipo cambia entre aperturas; se recalcula todo a partir de la prop.
   const opciones = equipo ? transicionesEstado(equipo.estado_asignacion) : [];
@@ -44,6 +50,8 @@ export function CambiarEstadoModal({ equipo, onClose, onSaved }: {
     <Modal open={!!equipo} onClose={cerrar} size="sm"
       title={t('estadoCambio.titulo')}
       subtitle={equipo ? `${equipo.marca} ${equipo.linea_modelo} · ${equipo.serial}` : undefined}>
+      {coeditores.length > 0 && <CoeditBanner peers={coeditores} className="mb-4" />}
+
       {bloqueado ? (
         <div className="flex items-start gap-3 p-3 rounded-xl bg-warning/10 border border-warning/25 text-sm leading-snug">
           <AlertTriangle size={18} className="text-warning shrink-0 mt-0.5" />

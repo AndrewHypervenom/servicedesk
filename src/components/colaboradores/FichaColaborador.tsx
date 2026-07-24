@@ -15,6 +15,8 @@ import {
   Briefcase, Building2, CalendarDays, Hash, Laptop, Mail, MapPin, Phone, UserCog,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
+import { useViewingPresence } from '@/lib/presence/hooks';
+import { CoeditBanner } from '@/components/presence';
 import { equiposDeColaborador } from '@/lib/api';
 import { antiguedadTexto, colorEstatus, estatusLegible } from '@/lib/colaboradores/estatus';
 import { fmtDate, initials } from '@/lib/format';
@@ -61,10 +63,17 @@ export function FichaColaborador({ colaborador: c, sede, onClose, onEditar }: Pr
     enabled: !!c,
   });
 
+  // Presencia: viendo esta ficha. El banner avisa si alguien la está editando.
+  const coeditores = useViewingPresence(
+    c ? { type: 'colaborador', id: c.cedula, title: c.nombre } : null,
+  );
+
   return (
     <Modal open={!!c} onClose={onClose} size="lg" title={c?.nombre} subtitle={c ? `C.C. ${c.cedula}` : undefined}>
       {c && (
         <div className="space-y-4">
+          {coeditores.length > 0 && <CoeditBanner peers={coeditores} />}
+
           {/* Cabecera: quién es y en qué estado está, de un vistazo. */}
           <div className="flex flex-wrap items-center gap-4 rounded-2xl border border-ink-100 dark:border-white/10 p-4">
             <motion.div

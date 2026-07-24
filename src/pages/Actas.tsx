@@ -66,12 +66,29 @@ export function Actas() {
     });
   };
 
+  // Si el acta se firmó en físico, el documento válido es el escaneo subido:
+  // ver/imprimir muestran ese y no la regeneración sin firma del colaborador.
   const ver = async (a: Acta) => {
+    if (a.archivo_firmado_url) { window.open(a.archivo_firmado_url, '_blank', 'noreferrer'); return; }
     try { abrirBlob(await generarPdf(a)); }
     catch (e: any) { toast.error(e.message ?? t('common.error')); }
   };
 
   const imprimir = async (a: Acta) => {
+    if (a.archivo_firmado_url) {
+      // Solo los PDF se pueden mandar a la impresora en un iframe; una foto o
+      // escaneo en imagen se abre en pestaña para que el navegador la imprima.
+      if (/\.pdf(\?|$)/i.test(a.archivo_firmado_url)) {
+        try {
+          const res = await fetch(a.archivo_firmado_url);
+          if (!res.ok) throw new Error(String(res.status));
+          imprimirBlob(await res.blob());
+          return;
+        } catch { /* cae a abrir en pestaña */ }
+      }
+      window.open(a.archivo_firmado_url, '_blank', 'noreferrer');
+      return;
+    }
     try { imprimirBlob(await generarPdf(a)); }
     catch (e: any) { toast.error(e.message ?? t('common.error')); }
   };

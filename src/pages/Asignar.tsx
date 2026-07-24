@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { UserPlus, Search, Check, ArrowRight, ArrowLeft, FileSignature, Eye, Plus, X, SearchX } from 'lucide-react';
-import { listEquipos, getColaborador, asignarEquipo, createActa, subirPdfActa, subirActaFirmada, listSedes } from '@/lib/api';
+import { listEquipos, getColaborador, asignarEquipo, createActa, updateActa, deleteActa, subirPdfActa, subirActaFirmada, listSedes } from '@/lib/api';
 import { generarActaPdf, abrirBlob, type ActaItem } from '@/lib/pdf';
 import { ACTA_ASIGNACION } from '@/lib/actaTemplates';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -13,7 +13,9 @@ import { EstadoBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { useApp } from '@/store/useApp';
-import type { Colaborador, Equipo } from '@/types';
+import { useEditingPresence } from '@/lib/presence/hooks';
+import { CoeditBanner } from '@/components/presence';
+import type { Acta, Colaborador, Equipo } from '@/types';
 
 export function Asignar() {
   const { t } = useTranslation();
@@ -32,8 +34,18 @@ export function Asignar() {
   const [novedades, setNovedades] = useState('');
   const [busy, setBusy] = useState(false);
   const firmaRef = useRef<FirmaActaHandle>(null);
+  // Acta reservada: se crea al descargarla para firmar a mano, para que el
+  // papel salga con su consecutivo definitivo y no con un marcador.
+  const borradorRef = useRef<Acta | null>(null);
 
   const seleccionados = Object.values(sel);
+
+  // Presencia: una asignación es un flujo con un colaborador de ancla (el
+  // payload lleva una sola actividad por pestaña). Declaro que estoy asignándole
+  // equipos para que dos técnicos no le entreguen a la misma persona a la vez.
+  const coeditores = useEditingPresence(
+    colab ? { type: 'colaborador', id: colab.cedula, title: colab.nombre, detail: 'Asignando equipos' } : null,
+  );
 
   // Un Técnico o Líder de sede solo asigna a colaboradores de sus sedes. Puede
   // verlos, pero no continuar. La base lo vuelve a validar (asignacion_guard).
@@ -86,17 +98,54 @@ export function Asignar() {
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
   };
 
+  /**
+   * Devuelve el acta de este flujo, creándola la primera vez. Al descargarla
+   * para firmar en físico hay que reservar ya el consecutivo, porque es el que
+   * queda impreso en el papel que firma el colaborador.
+   */
+  const asegurarActa = async (c: Colaborador): Promise<Acta> => {
+    const datos = {
+      tipo: 'ENTREGA' as const, equipo_id: seleccionados[0].id,
+      items: seleccionados.map((e) => ({ equipo_id: e.id, observaciones: obs[e.id] })),
+      cedula_colaborador: c.cedula, correo_destino: c.correo, observaciones: novedades,
+    };
+    const previo = borradorRef.current;
+    if (previo) {
+      // Pudo cambiar equipos u observaciones después de descargar: se refresca
+      // el registro conservando el consecutivo ya reservado.
+      await updateActa(previo.id, datos);
+      borradorRef.current = { ...previo, ...datos };
+      return borradorRef.current;
+    }
+    const acta = await createActa({ ...datos, firmado: false });
+    borradorRef.current = acta;
+    return acta;
+  };
+
+  /** Suelta el acta reservada si el técnico abandona el flujo sin finalizar. */
+  const descartarBorrador = () => {
+    const b = borradorRef.current;
+    borradorRef.current = null;
+    // Si el borrado falla (p. ej. por RLS) el acta queda visible en la lista
+    // como pendiente de firma, que es recuperable; no vale romper el flujo.
+    if (b) deleteActa(b.id).catch(() => { /* noop */ });
+  };
+
+  useEffect(() => descartarBorrador, []);
+
   // Acta sin firmar, para el flujo manual: se descarga, se firma a mano y se
   // vuelve a subir escaneada.
   const descargarParaFirmar = async () => {
+    if (!colab) return;
     if (!seleccionados.length) { toast.error(t('assign.noneSelected')); return; }
     try {
+      const acta = await asegurarActa(colab);
       const blob = await generarActaPdf({
-        tipo: 'ENTREGA', consecutivo: 'ACTA', items: buildItems(),
+        tipo: 'ENTREGA', consecutivo: acta.consecutivo || 'ACTA', items: buildItems(),
         colaborador: colab, tecnico: perfil?.nombre, tecnicoCedula: perfil?.cedula ?? undefined,
         firmaTecnicoDataUrl: perfil?.firma_data, novedades,
       });
-      abrirBlob(blob, `acta-entrega-${colab?.cedula ?? 'colaborador'}.pdf`);
+      abrirBlob(blob, `${acta.consecutivo || `acta-entrega-${colab.cedula}`}.pdf`);
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
   };
 
@@ -113,22 +162,31 @@ export function Asignar() {
     try {
       const c = colab;
 
-      const acta = await createActa({
-        tipo: 'ENTREGA', equipo_id: seleccionados[0].id,
-        items: seleccionados.map((e) => ({ equipo_id: e.id, observaciones: obs[e.id] })),
-        cedula_colaborador: c.cedula, firma_data: firma, firmado: true,
-        correo_destino: c.correo, observaciones: novedades,
-      });
+      // Reutiliza el acta ya reservada si se descargó para firmar a mano, así
+      // el consecutivo del papel firmado es el que queda guardado.
+      const acta = await asegurarActa(c);
 
-      const blob = await generarActaPdf({
-        tipo: 'ENTREGA', consecutivo: acta.consecutivo || 'ACTA', items: buildItems(),
-        colaborador: c, firmaDataUrl: firma, tecnico: perfil?.nombre,
-        tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: perfil?.firma_data, novedades,
-      });
-      await subirPdfActa(acta.id, blob);
-      // Firma física: además del PDF base, se guarda el acta escaneada como
-      // documento firmado autoritativo.
-      if (archivoFirmado) await subirActaFirmada(acta.id, archivoFirmado);
+      // Firma física: el acta oficial es el archivo escaneado que sube el
+      // técnico. No se genera ni se guarda la versión de firma digital, porque
+      // esa quedaría sin firma del colaborador y compite con la real.
+      let documento: Blob;
+      let nombreDoc: string;
+      if (archivoFirmado) {
+        await subirActaFirmada(acta.id, archivoFirmado);
+        documento = archivoFirmado;
+        nombreDoc = archivoFirmado.name;
+      } else {
+        await updateActa(acta.id, { firma_data: firma, firmado: true });
+        documento = await generarActaPdf({
+          tipo: 'ENTREGA', consecutivo: acta.consecutivo || 'ACTA', items: buildItems(),
+          colaborador: c, firmaDataUrl: firma, tecnico: perfil?.nombre,
+          tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: perfil?.firma_data, novedades,
+        });
+        await subirPdfActa(acta.id, documento);
+        nombreDoc = `${acta.consecutivo || 'acta'}.pdf`;
+      }
+      // Ya está firmada y guardada: deja de ser un borrador descartable.
+      borradorRef.current = null;
 
       for (const e of seleccionados) {
         await asignarEquipo({
@@ -141,7 +199,7 @@ export function Asignar() {
       // no está desplegada y el checkbox prometía un correo que nunca salía.
       // Cuando se despliegue (deploy + secrets de Resend), restaurar aquí la
       // llamada Y avisar con un toast si falla, en vez de tragarse el error.
-      abrirBlob(blob, `${acta.consecutivo || 'acta'}.pdf`);
+      abrirBlob(documento, nombreDoc);
       toast.success(t('assign.done'));
       setStep(0); setCedula(''); setBuscado(false); setColab(null);
       setSel({}); setObs({}); setNovedades('');
@@ -164,6 +222,7 @@ export function Asignar() {
   return (
     <div className="max-w-3xl mx-auto">
       <PageHeader title={t('assign.title')} subtitle={t('assign.subtitle')} icon={UserPlus} />
+      {coeditores.length > 0 && <CoeditBanner peers={coeditores} className="mb-6" />}
       <div className="flex items-center justify-between mb-8 px-2">
         {steps.map((s, i) => (
           <div key={s} className="flex items-center flex-1 last:flex-none">
@@ -326,7 +385,7 @@ export function Asignar() {
             <FirmaActa ref={firmaRef} onDescargar={descargarParaFirmar} />
 
             <div className="flex justify-between mt-6">
-              <Button icon={ArrowLeft} disabled={busy} onClick={() => setStep(1)}>{t('common.back')}</Button>
+              <Button icon={ArrowLeft} disabled={busy} onClick={() => { descartarBorrador(); setStep(1); }}>{t('common.back')}</Button>
               <Button variant="primary" loading={busy} icon={FileSignature} onClick={finalizar}>
                 {busy ? t('common.saving') : t('assign.generateActa')}
               </Button>

@@ -4,6 +4,7 @@ import { AnimatePresence } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { PageTransition } from './PageTransition';
+import { PresenceSync, SameViewAlert } from '@/components/presence';
 
 export function AppLayout() {
   const [open, setOpen] = useState(false);
@@ -17,6 +18,12 @@ export function AppLayout() {
 
   return (
     <div className="relative min-h-screen flex bg-ink-50 dark:bg-ink-900 bg-grid">
+      {/* Presencia en tiempo real: conecta al canal, emite ruta/actividad y
+          desconecta al cerrar sesión. No pinta nada. */}
+      <PresenceSync />
+      {/* Aviso flotante cuando coincides con alguien en la misma vista. */}
+      <SameViewAlert />
+
       <div className="aurora" aria-hidden>
         <span />
         <span />

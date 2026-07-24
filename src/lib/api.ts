@@ -262,6 +262,16 @@ export async function updateActa(id: string, patch: Partial<Acta>): Promise<void
   if (error) throw error;
 }
 
+/**
+ * Borra un acta que quedó reservada pero nunca se finalizó (el técnico descargó
+ * el acta para firmarla a mano y abandonó el flujo). Solo aplica a borradores:
+ * no tienen archivos en storage ni movimientos asociados.
+ */
+export async function deleteActa(id: string): Promise<void> {
+  const { error } = await supabase.from('actas').delete().eq('id', id);
+  if (error) throw error;
+}
+
 export async function subirActaFirmada(actaId: string, file: File): Promise<string | null> {
   const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
   const path = `${actaId}-firmada.${ext}`;
