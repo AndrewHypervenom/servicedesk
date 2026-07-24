@@ -3,12 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { Trans, useTranslation } from 'react-i18next';
 import { ShieldCheck, UserPlus, Copy, Check, Pencil, Trash2, AlertTriangle, UserX, SearchX } from 'lucide-react';
 import {
-  listPerfiles, updateRol, crearUsuario, listSedes,
-  listSedesPorPerfil, setSedesDePerfil, actualizarPerfil, eliminarUsuario,
+  listPerfiles, updateRol, crearUsuario, listSedes, listPaises,
+  listPaisesPorPerfil, setPaisesDePerfil, actualizarPerfil, eliminarUsuario,
 } from '@/lib/api';
 import { esAdmin } from '@/lib/roles';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select, type SelectOption } from '@/components/ui/Select';
+import { MultiSelect } from '@/components/ui/MultiSelect';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
@@ -17,7 +18,7 @@ import { SkeletonRows } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { initials } from '@/lib/format';
 import { useApp } from '@/store/useApp';
-import type { Perfil, RolUsuario, Sede } from '@/types';
+import type { Pais, Perfil, RolUsuario, Sede } from '@/types';
 
 const ROLES: RolUsuario[] = ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'];
 const rolColor: Record<RolUsuario, string> = {
@@ -27,16 +28,24 @@ const rolColor: Record<RolUsuario, string> = {
   TECNICO: 'bg-success/15 text-emerald-700 dark:text-success',
 };
 
-const rolPorSede = (r: RolUsuario) => r === 'JEFE_SEDE' || r === 'TECNICO';
-const sedeOption = (s: Sede): SelectOption =>
-  ({ value: s.id, label: s.pais_nombre ? `${s.nombre} · ${s.pais_nombre}` : s.nombre });
+/**
+ * Roles con alcance geográfico. Se asignan por PAÍS y cubren todas las sedes de
+ * ese país: el Líder de sede puede tener varios países, el Técnico solo uno.
+ * El Administrador y el Jefe (LIDER) no se limitan por país.
+ */
+const rolPorPais = (r: RolUsuario) => r === 'JEFE_SEDE' || r === 'TECNICO';
+/** Cuántos países admite el rol; el Técnico opera en uno solo. */
+const maxPaises = (r: RolUsuario) => (r === 'TECNICO' ? 1 : undefined);
+const paisOption = (p: Pais): SelectOption =>
+  ({ value: p.id, label: p.codigo ? `${p.nombre} (${p.codigo})` : p.nombre });
 
 export function Usuarios() {
   const { t } = useTranslation();
   const { data: perfiles = [], refetch, isLoading } = useQuery({ queryKey: ['perfiles'], queryFn: listPerfiles });
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
-  const { data: sedesPorPerfil = {}, refetch: refetchSedes } = useQuery({
-    queryKey: ['perfil-sedes'], queryFn: listSedesPorPerfil,
+  const { data: paises = [] } = useQuery({ queryKey: ['paises'], queryFn: listPaises });
+  const { data: paisesPorPerfil = {}, refetch: refetchPaises } = useQuery({
+    queryKey: ['perfil-paises'], queryFn: listPaisesPorPerfil,
   });
   const [nuevo, setNuevo] = useState(false);
   const [editando, setEditando] = useState<Perfil | null>(null);
@@ -52,10 +61,21 @@ export function Usuarios() {
         .some((v) => v?.toLowerCase().includes(term)));
   }, [perfiles, q, t]);
 
-  const recargar = () => { refetch(); refetchSedes(); };
+  const recargar = () => { refetch(); refetchPaises(); };
 
   const change = async (id: string, rol: RolUsuario) => {
-    await updateRol(id, rol); toast.success(t('common.success')); refetch();
+    try {
+      await updateRol(id, rol);
+      // Al pasar a Técnico solo puede quedar un país: se recorta aquí para que
+      // la base no rechace la siguiente edición con "solo puede tener un país".
+      const actuales = paisesPorPerfil[id] ?? [];
+      if (rol === 'TECNICO' && actuales.length > 1) await setPaisesDePerfil(id, [actuales[0]]);
+      if (!rolPorPais(rol) && actuales.length) await setPaisesDePerfil(id, []);
+      toast.success(t('common.success'));
+    } catch (e: any) {
+      toast.error(e?.message ?? t('common.error'));
+    }
+    recargar();
   };
 
   return (
@@ -63,8 +83,8 @@ export function Usuarios() {
       <PageHeader title={t('users.title')} subtitle={t('users.subtitle')} icon={ShieldCheck}
         action={<Button variant="primary" icon={UserPlus} onClick={() => setNuevo(true)}>{t('users.newUser')}</Button>} />
 
-      <NuevoUsuarioModal open={nuevo} onClose={() => setNuevo(false)} onSaved={refetch} sedes={sedes} />
-      <EditarUsuarioModal perfil={editando} sedes={sedes}
+      <NuevoUsuarioModal open={nuevo} onClose={() => setNuevo(false)} onSaved={recargar} paises={paises} />
+      <EditarUsuarioModal perfil={editando} paises={paises} asignados={editando ? paisesPorPerfil[editando.id] ?? [] : []}
         onClose={() => setEditando(null)} onSaved={recargar} />
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
@@ -86,7 +106,7 @@ export function Usuarios() {
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-xs uppercase text-ink-400 border-b border-ink-100 dark:border-white/5">
-              <th className="px-5 py-3">{t('auth.name')}</th><th className="px-4 py-3">{t('auth.email')}</th><th className="px-4 py-3">{t('users.role')}</th><th className="px-4 py-3">{t('users.sede')}</th>
+              <th className="px-5 py-3">{t('auth.name')}</th><th className="px-4 py-3">{t('auth.email')}</th><th className="px-4 py-3">{t('users.role')}</th><th className="px-4 py-3">{t('users.paises')}</th>
               {soyAdmin && <th className="px-4 py-3 text-right">{t('common.actions')}</th>}
             </tr>
           </thead>
@@ -127,9 +147,10 @@ export function Usuarios() {
                   )}
                 </td>
                 <td className="px-4 py-3">
-                  {rolPorSede(p.rol)
-                    ? <SedesUsuario perfil={p} sedes={sedes} asignadas={sedesPorPerfil[p.id] ?? []} onSaved={recargar} />
-                    : <span className="text-ink-300">{t('users.todasLasSedes')}</span>}
+                  {rolPorPais(p.rol)
+                    ? <PaisesUsuario perfil={p} paises={paises} sedes={sedes}
+                        asignados={paisesPorPerfil[p.id] ?? []} onSaved={recargar} />
+                    : <span className="text-ink-300">{t('users.todosLosPaises')}</span>}
                 </td>
                 {soyAdmin && (
                   <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -159,11 +180,12 @@ export function Usuarios() {
 }
 
 /** Edición completa de un usuario por el administrador. */
-function EditarUsuarioModal({ perfil, sedes, onClose, onSaved }:
-  { perfil: Perfil | null; sedes: Sede[]; onClose: () => void; onSaved: () => void }) {
+function EditarUsuarioModal({ perfil, paises, asignados, onClose, onSaved }:
+  { perfil: Perfil | null; paises: Pais[]; asignados: string[]; onClose: () => void; onSaved: () => void }) {
   const { t } = useTranslation();
   const { perfil: yo } = useApp();
-  const [f, setF] = useState({ nombre: '', cedula: '', cargo: '', rol: 'TECNICO' as RolUsuario, sedeId: '', activo: true });
+  const [f, setF] = useState({ nombre: '', cedula: '', cargo: '', rol: 'TECNICO' as RolUsuario, activo: true });
+  const [paisIds, setPaisIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [cargado, setCargado] = useState<string | null>(null);
 
@@ -173,16 +195,25 @@ function EditarUsuarioModal({ perfil, sedes, onClose, onSaved }:
     setCargado(perfil.id);
     setF({
       nombre: perfil.nombre ?? '', cedula: perfil.cedula ?? '', cargo: perfil.cargo ?? '',
-      rol: perfil.rol, sedeId: perfil.sede_id ?? '', activo: perfil.activo,
+      rol: perfil.rol, activo: perfil.activo,
     });
+    setPaisIds(asignados);
   }
 
   const esYo = perfil?.id === yo?.id;
   const set = (k: keyof typeof f, v: string | boolean) => setF((s) => ({ ...s, [k]: v }));
 
+  // Al cambiar de rol se recorta la selección a lo que el nuevo rol admite: un
+  // Técnico con dos países guardaría un cambio que la base rechaza.
+  const cambiarRol = (r: RolUsuario) => {
+    set('rol', r);
+    const tope = maxPaises(r);
+    if (tope) setPaisIds((prev) => prev.slice(0, tope));
+  };
+
   const guardar = async () => {
     if (!f.nombre.trim()) { toast.error(t('form.requiredFields')); return; }
-    if (rolPorSede(f.rol) && !f.sedeId) { toast.error(t('users.sedeRequired')); return; }
+    if (rolPorPais(f.rol) && paisIds.length === 0) { toast.error(t('users.paisRequired')); return; }
     setBusy(true);
     try {
       await actualizarPerfil(perfil!.id, {
@@ -190,9 +221,13 @@ function EditarUsuarioModal({ perfil, sedes, onClose, onSaved }:
         cedula: f.cedula.trim() || null,
         cargo: f.cargo.trim() || null,
         rol: f.rol,
-        sede_id: rolPorSede(f.rol) ? f.sedeId : null,
         activo: f.activo,
       });
+      // Después del rol, porque el RPC valida el tope de países contra el rol ya
+      // guardado. Sin alcance geográfico (ADMIN / Jefe) se limpian los países y
+      // la base deja `sede_id` en NULL.
+      const destino = rolPorPais(f.rol) ? paisIds : [];
+      if (!mismosIds(destino, asignados)) await setPaisesDePerfil(perfil!.id, destino);
       toast.success(t('common.success'));
       onSaved(); onClose();
     } catch (e: any) {
@@ -220,14 +255,20 @@ function EditarUsuarioModal({ perfil, sedes, onClose, onSaved }:
         </div>
         <div>
           <label className="label">{t('users.role')}</label>
-          <Select value={f.rol} onChange={(v) => set('rol', v)}
+          <Select value={f.rol} onChange={(v) => cambiarRol(v as RolUsuario)}
             options={ROLES.map((r) => ({ value: r, label: t(`rol.${r}`), description: t(`rolDesc.${r}`) }))} />
         </div>
-        {rolPorSede(f.rol) && (
+        {rolPorPais(f.rol) && (
           <div className="sm:col-span-2">
-            <label className="label req">{t('users.sede')}</label>
-            <Select value={f.sedeId} onChange={(v) => set('sedeId', v)}
-              placeholder={t('users.selectSede')} options={sedes.map(sedeOption)} />
+            <label className="label req">{t('users.paises')}</label>
+            {paises.length === 0
+              ? <p className="text-xs text-warning">{t('users.noPaises')}</p>
+              : <MultiSelect values={paisIds} onChange={setPaisIds} options={paises.map(paisOption)}
+                  placeholder={t('users.selectPaises')} max={maxPaises(f.rol)}
+                  maxHint={t('users.unSoloPaisTecnico')} />}
+            <p className="text-[11px] text-ink-400 mt-1 leading-snug">
+              {f.rol === 'TECNICO' ? t('users.paisHintTecnico') : t('users.paisHintJefeSede')}
+            </p>
           </div>
         )}
 
@@ -344,101 +385,106 @@ function BorrarUsuario({ perfil, esYo, onDone }:
   );
 }
 
+/** Iguales sin importar el orden: evita guardar cuando no se cambió nada. */
+const mismosIds = (a: string[], b: string[]) =>
+  a.length === b.length && [...a].sort().join() === [...b].sort().join();
+
 /**
- * Sede de un usuario. Cada usuario opera en una sola sede (su ciudad). El
- * Administrador y el Jefe (LIDER) pueden cambiársela: al guardar se ajusta
- * `perfiles.sede_id` y la tabla `perfil_sedes` (siempre con una única fila) vía
- * el RPC `set_sedes_de_perfil`, autorizado para ADMIN y LIDER. Para los demás
- * la sede se muestra en modo lectura.
+ * Países de un usuario, editables desde la propia fila con un select de casillas.
+ *
+ * El alcance se asigna por país y cubre TODAS sus sedes, así que no hay que
+ * volver a tocar a nadie cuando se abre una ciudad nueva. El Líder de sede puede
+ * tener varios países; el Técnico, uno solo (`max`), y la base lo vuelve a
+ * validar. Se guarda al cerrar el desplegable, no en cada casilla, para no
+ * disparar una escritura por clic.
+ *
+ * El Administrador y el Jefe (LIDER) editan; para el resto es solo lectura.
  */
-function SedesUsuario({ perfil, sedes, asignadas, onSaved }:
-  { perfil: Perfil; sedes: Sede[]; asignadas: string[]; onSaved: () => void }) {
+function PaisesUsuario({ perfil, paises, sedes, asignados, onSaved }:
+  { perfil: Perfil; paises: Pais[]; sedes: Sede[]; asignados: string[]; onSaved: () => void }) {
   const { t } = useTranslation();
   const { perfil: yoPerfil } = useApp();
-  const [open, setOpen] = useState(false);
-  // Una única sede: null cuando el usuario no tiene ninguna asignada.
-  const [sel, setSel] = useState<string | null>(asignadas[0] ?? null);
+  const [sel, setSel] = useState<string[]>(asignados);
   const [busy, setBusy] = useState(false);
-  // El Jefe (LIDER) gestiona la sede de las personas igual que el ADMIN.
+  // Se resiembra cuando el servidor devuelve otra cosa (guardado, recarga), sin
+  // useEffect: comparar contra lo último visto evita un render de más.
+  const [visto, setVisto] = useState(asignados.join());
+  if (asignados.join() !== visto) { setVisto(asignados.join()); setSel(asignados); }
+
   const puedeEditar = esAdmin(yoPerfil?.rol) || yoPerfil?.rol === 'LIDER';
+  const nSedes = sedes.filter((s) => sel.includes(s.pais_id)).length;
 
-  const abrir = () => { setSel(asignadas[0] ?? null); setOpen(true); };
-  // Selección única: al tocar la sede activa se deselecciona (deja al usuario
-  // sin sede); tocar otra la reemplaza.
-  const elegir = (id: string) => setSel((prev) => prev === id ? null : id);
-
-  const guardar = async () => {
+  const guardar = async (ids: string[]) => {
+    if (mismosIds(ids, asignados)) return;
     setBusy(true);
     try {
-      // El RPC reemplaza la sede y alinea `perfiles.sede_id` en una sola
-      // operación autorizada para ADMIN y Jefe (LIDER).
-      await setSedesDePerfil(perfil.id, sel ? [sel] : []);
+      await setPaisesDePerfil(perfil.id, ids);
       toast.success(t('common.success'));
-      setOpen(false); onSaved();
-    } catch (e: any) { toast.error(e?.message ?? t('common.error')); }
-    finally { setBusy(false); }
+      onSaved();
+    } catch (e: any) {
+      setSel(asignados); // la base rechazó el cambio: la fila no debe mentir
+      toast.error(e?.message ?? t('common.error'));
+    } finally { setBusy(false); }
   };
 
-  const nombre = asignadas[0] ? sedes.find((s) => s.id === asignadas[0])?.nombre : undefined;
+  if (!puedeEditar) {
+    const nombres = paises.filter((p) => asignados.includes(p.id)).map((p) => p.nombre);
+    return (
+      <div className="flex flex-wrap items-center gap-1">
+        {nombres.length === 0 && <span className="text-ink-300">{t('users.sinPais')}</span>}
+        {nombres.map((n) => (
+          <span key={n} className="badge bg-brand-500/15 text-brand-600 dark:text-brand-300">{n}</span>
+        ))}
+      </div>
+    );
+  }
 
   return (
-    <>
-      <button onClick={abrir} disabled={!puedeEditar}
-        className="flex flex-wrap items-center gap-1 text-left disabled:cursor-default">
-        {!nombre && <span className="text-ink-300">{t('users.selectSede')}</span>}
-        {nombre && (
-          <span className="badge bg-brand-500/15 text-brand-600 dark:text-brand-300">{nombre}</span>
-        )}
-        {puedeEditar && <Pencil size={13} className="text-ink-400 ml-1" />}
-      </button>
-
-      <Modal open={open} onClose={() => !busy && setOpen(false)}
-        title={t('users.sedes')} subtitle={t('users.sedesHint', { nombre: perfil.nombre })}>
-        <div className="space-y-1.5 max-h-72 overflow-y-auto">
-          {sedes.map((s) => {
-            const on = sel === s.id;
-            return (
-              <button key={s.id} onClick={() => elegir(s.id)}
-                className={`w-full text-left p-3 rounded-xl border transition-all flex items-center gap-3 ${
-                  on ? 'border-brand-500 bg-brand-500/5 ring-1 ring-brand-500' : 'border-ink-100 dark:border-white/10 hover:bg-ink-50 dark:hover:bg-white/5'}`}>
-                <div className={`w-5 h-5 rounded-full grid place-items-center shrink-0 border ${on ? 'bg-brand-500 border-brand-500 text-white' : 'border-ink-300 dark:border-white/20'}`}>
-                  {on && <Check size={13} />}
-                </div>
-                <span className="text-sm">{sedeOption(s).label}</span>
-              </button>
-            );
-          })}
-        </div>
-        <div className="flex justify-end gap-2 mt-6">
-          <Button disabled={busy} onClick={() => setOpen(false)}>{t('common.cancel')}</Button>
-          <Button variant="primary" loading={busy} onClick={guardar}>
-            {busy ? t('common.saving') : t('common.save')}
-          </Button>
-        </div>
-      </Modal>
-    </>
+    <div className="min-w-[11rem]">
+      <MultiSelect
+        values={sel}
+        onChange={setSel}
+        onCerrar={guardar}
+        disabled={busy || paises.length === 0}
+        options={paises.map(paisOption)}
+        placeholder={paises.length ? t('users.selectPaises') : t('users.noPaises')}
+        max={maxPaises(perfil.rol)}
+        maxHint={t('users.unSoloPaisTecnico')}
+        className="!py-1.5 text-xs"
+      />
+      {sel.length > 0 && (
+        <p className="text-[11px] text-ink-400 mt-1">{t('users.sedesCubiertas', { n: nSedes })}</p>
+      )}
+    </div>
   );
 }
 
-function NuevoUsuarioModal({ open, onClose, onSaved, sedes }: { open: boolean; onClose: () => void; onSaved: () => void; sedes: Sede[] }) {
+function NuevoUsuarioModal({ open, onClose, onSaved, paises }: { open: boolean; onClose: () => void; onSaved: () => void; paises: Pais[] }) {
   const { t } = useTranslation();
-  const vacio = { nombre: '', email: '', rol: 'TECNICO' as RolUsuario, cedula: '', sedeId: '' };
+  const vacio = { nombre: '', email: '', rol: 'TECNICO' as RolUsuario, cedula: '' };
   const [f, setF] = useState(vacio);
+  const [paisIds, setPaisIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [cred, setCred] = useState<{ link: string; email: string; password: string } | null>(null);
   const set = (k: keyof typeof vacio, v: string) => setF((prev) => ({ ...prev, [k]: v }));
 
-  const cerrar = () => { setF(vacio); setCred(null); onClose(); };
+  const cambiarRol = (r: RolUsuario) => {
+    set('rol', r);
+    const tope = maxPaises(r);
+    if (tope) setPaisIds((prev) => prev.slice(0, tope));
+  };
+
+  const cerrar = () => { setF(vacio); setPaisIds([]); setCred(null); onClose(); };
 
   const guardar = async () => {
     if (!f.nombre || !f.email) { toast.error(t('form.requiredFields')); return; }
-    if (rolPorSede(f.rol) && !f.sedeId) { toast.error(t('users.sedeRequired')); return; }
+    if (rolPorPais(f.rol) && paisIds.length === 0) { toast.error(t('users.paisRequired')); return; }
     setBusy(true);
     try {
       const r = await crearUsuario({
         email: f.email.trim(), nombre: f.nombre.trim(), rol: f.rol,
         cedula: f.cedula.trim() || undefined,
-        sedeId: rolPorSede(f.rol) ? f.sedeId : null,
+        paisIds: rolPorPais(f.rol) ? paisIds : [],
       });
       setCred({ link: window.location.origin, email: r.email, password: r.password });
       onSaved();
@@ -477,14 +523,19 @@ function NuevoUsuarioModal({ open, onClose, onSaved, sedes }: { open: boolean; o
             </div>
             <div>
               <label className="label">{t('users.role')}</label>
-              <Select value={f.rol} onChange={(v) => set('rol', v)} options={ROLES.map((r) => ({ value: r, label: t(`rol.${r}`), description: t(`rolDesc.${r}`) }))} />
+              <Select value={f.rol} onChange={(v) => cambiarRol(v as RolUsuario)} options={ROLES.map((r) => ({ value: r, label: t(`rol.${r}`), description: t(`rolDesc.${r}`) }))} />
             </div>
-            {rolPorSede(f.rol) && (
+            {rolPorPais(f.rol) && (
               <div className="sm:col-span-2">
-                <label className="label req">{t('users.sede')}</label>
-                {sedes.length === 0
-                  ? <p className="text-xs text-warning">{t('users.noSedes')}</p>
-                  : <Select value={f.sedeId} onChange={(v) => set('sedeId', v)} placeholder={t('users.selectSede')} options={sedes.map(sedeOption)} />}
+                <label className="label req">{t('users.paises')}</label>
+                {paises.length === 0
+                  ? <p className="text-xs text-warning">{t('users.noPaises')}</p>
+                  : <MultiSelect values={paisIds} onChange={setPaisIds} options={paises.map(paisOption)}
+                      placeholder={t('users.selectPaises')} max={maxPaises(f.rol)}
+                      maxHint={t('users.unSoloPaisTecnico')} />}
+                <p className="text-[11px] text-ink-400 mt-1 leading-snug">
+                  {f.rol === 'TECNICO' ? t('users.paisHintTecnico') : t('users.paisHintJefeSede')}
+                </p>
               </div>
             )}
           </div>

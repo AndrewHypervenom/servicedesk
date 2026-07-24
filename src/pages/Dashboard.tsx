@@ -47,9 +47,9 @@ function ChartTooltip({ active, payload, label }: any) {
 
 export function Dashboard() {
   const { t, i18n } = useTranslation();
-  const { canEdit, perfil } = useApp();
+  const { canEdit, perfil, misSedes } = useApp();
   const { data: equiposRaw = [], isLoading } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
-  const equipos = useMemo(() => scopeEquipos(equiposRaw, perfil), [equiposRaw, perfil]);
+  const equipos = useMemo(() => scopeEquipos(equiposRaw, perfil, misSedes), [equiposRaw, perfil, misSedes]);
   const { data: movs = [], isLoading: loadingMovs } = useQuery({ queryKey: ['recentMov'], queryFn: () => recentMovimientos(6) });
 
   const oscuro = useEsOscuro();

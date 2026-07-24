@@ -8,6 +8,9 @@ type Theme = 'light' | 'dark' | 'system';
 
 interface AppState {
   perfil: Perfil | null;
+  /** Países asignados (Líder de sede y Técnico); vacío para ADMIN y Jefe. */
+  misPaises: string[];
+  /** Todas las sedes de esos países: es el alcance real de la persona. */
   misSedes: string[];
   loading: boolean;
   theme: Theme;
@@ -33,19 +36,31 @@ function applyTheme(theme: Theme) {
   root.classList.toggle('dark', dark);
 }
 
-/** Perfil + las sedes en las que puede operar (la principal y las adicionales). */
+/**
+ * Perfil + su alcance geográfico.
+ *
+ * El alcance se asigna por PAÍS (`perfil_paises`) y la base lo expande a todas
+ * las sedes de esos países en `perfil_sedes`. Aquí se leen ya expandidas: la
+ * app sigue razonando en sedes, y el país es solo la forma de asignarlas.
+ */
 async function cargarPerfil(userId: string) {
-  const [{ data: perfil }, { data: extra }] = await Promise.all([
+  const [{ data: perfil }, { data: extra }, { data: paises }] = await Promise.all([
     supabase.from('perfiles').select('*').eq('id', userId).single(),
     supabase.from('perfil_sedes').select('sede_id').eq('perfil_id', userId),
+    supabase.from('perfil_paises').select('pais_id').eq('perfil_id', userId),
   ]);
   const sedes = new Set((extra ?? []).map((s: { sede_id: string }) => s.sede_id));
   if (perfil?.sede_id) sedes.add(perfil.sede_id);
-  return { perfil: perfil as Perfil, misSedes: [...sedes] };
+  return {
+    perfil: perfil as Perfil,
+    misSedes: [...sedes],
+    misPaises: (paises ?? []).map((p: { pais_id: string }) => p.pais_id),
+  };
 }
 
 export const useApp = create<AppState>((set, get) => ({
   perfil: null,
+  misPaises: [],
   misSedes: [],
   loading: true,
   theme: (localStorage.getItem('theme') as Theme) || 'system',
@@ -57,7 +72,7 @@ export const useApp = create<AppState>((set, get) => ({
     if (data.session) set(await cargarPerfil(data.session.user.id));
     supabase.auth.onAuthStateChange(async (_e, session) => {
       if (session) set(await cargarPerfil(session.user.id));
-      else set({ perfil: null, misSedes: [] });
+      else set({ perfil: null, misSedes: [], misPaises: [] });
     });
     set({ loading: false });
   },
@@ -86,7 +101,7 @@ export const useApp = create<AppState>((set, get) => ({
   },
   signOut: async () => {
     await supabase.auth.signOut();
-    set({ perfil: null, misSedes: [] });
+    set({ perfil: null, misSedes: [], misPaises: [] });
   },
 
   setTheme: (t) => { localStorage.setItem('theme', t); applyTheme(t); set({ theme: t }); },

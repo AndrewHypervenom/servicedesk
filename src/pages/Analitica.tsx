@@ -26,7 +26,7 @@ export function Analitica() {
     () => new Intl.DateTimeFormat(i18n.language === 'pt' ? 'pt-BR' : 'es-CO', { month: 'short' }),
     [i18n.language],
   );
-  const { perfil } = useApp();
+  const { perfil, misSedes } = useApp();
   const oscuro = useEsOscuro();
   const paleta = paletaPara(oscuro);
 
@@ -54,7 +54,7 @@ export function Analitica() {
     queryFn: () => movimientosDesde(desde12m),
   });
 
-  const alcance = useMemo(() => scopeEquipos(equiposRaw, perfil), [equiposRaw, perfil]);
+  const alcance = useMemo(() => scopeEquipos(equiposRaw, perfil, misSedes), [equiposRaw, perfil, misSedes]);
 
   // ── Filtros ───────────────────────────────────────────────────────────
   const [sedeFiltro, setSedeFiltro] = useState<string>('');

@@ -25,9 +25,9 @@ import type { Equipo } from '@/types';
 
 export function Inventario() {
   const { t } = useTranslation();
-  const { canEdit, can, perfil } = useApp();
+  const { canEdit, can, perfil, misSedes } = useApp();
   const { data: equiposRaw = [], refetch, isLoading } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
-  const equipos = useMemo(() => scopeEquipos(equiposRaw, perfil), [equiposRaw, perfil]);
+  const equipos = useMemo(() => scopeEquipos(equiposRaw, perfil, misSedes), [equiposRaw, perfil, misSedes]);
   const puedeEditar = can('ADMIN', 'LIDER', 'JEFE_SEDE');
 
   const [q, setQ] = useState('');

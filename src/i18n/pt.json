@@ -147,7 +147,7 @@
   },
   "sedes": {
     "title": "Países e unidades",
-    "subtitle": "Defina a estrutura geográfica. Líderes de unidade e técnicos ficam limitados à sua unidade.",
+    "subtitle": "Defina a estrutura geográfica. Líderes de unidade e técnicos operam em todas as unidades dos seus países.",
     "countries": "Países",
     "countryName": "Nome do país",
     "code": "Cód.",
@@ -321,8 +321,8 @@
   "rolDesc": {
     "ADMIN": "Controle total: todas as unidades, usuários, integrações e configuração.",
     "LIDER": "Tudo operacional em todas as cidades. Não altera configuração nem usuários.",
-    "JEFE_SEDE": "Gerencia inventário, movimentos e relatórios apenas da sua cidade.",
-    "TECNICO": "Atribui, devolve e registra movimentos apenas da sua cidade."
+    "JEFE_SEDE": "Gerencia inventário, movimentos e relatórios das unidades dos seus países.",
+    "TECNICO": "Atribui, devolve e registra movimentos nas unidades do seu país."
   },
   "inventory": {
     "title": "Inventário de equipamentos",
@@ -368,7 +368,7 @@
     "found": "Colaborador encontrado",
     "notFound": "Não encontrado. Preencha os dados para criá-lo.",
     "notRegistered": "Não existe um colaborador com esse documento. Cadastre-o primeiro na seção Colaboradores.",
-    "otraSede": "Este colaborador pertence a {{sede}} e você não opera nessa sede. Peça a um administrador ou chefe que lhe atribua a sede, ou que outro usuário faça a entrega.",
+    "otraSede": "Este colaborador pertence a {{sede}} e você não opera nesse país. Peça a um administrador ou chefe que lhe atribua o país, ou que outro usuário faça a entrega.",
     "sinSede": "Este colaborador não tem sede atribuída, portanto não é possível verificar se pertence à sua. Peça a um administrador que atribua a sede.",
     "selectEquipment": "Selecione o equipamento disponível",
     "signTitle": "Assinatura do colaborador",
@@ -450,6 +450,16 @@
     "sedesHint": "Unidade em que {{nombre}} pode atribuir equipamentos.",
     "todasLasSedes": "Todas as unidades",
     "noSedes": "Ainda não há unidades. Crie-as na seção Unidades.",
+    "paises": "Países",
+    "selectPaises": "Escolher países…",
+    "paisRequired": "Selecione ao menos um país para este perfil.",
+    "todosLosPaises": "Todos os países",
+    "sinPais": "Sem país",
+    "noPaises": "Ainda não há países. Crie-os na seção Unidades.",
+    "unSoloPaisTecnico": "Um técnico opera em um único país. Marque outro para substituí-lo.",
+    "sedesCubiertas": "Cobre {{n}} unidade(s)",
+    "paisHintTecnico": "Opera em todas as unidades do seu país.",
+    "paisHintJefeSede": "Opera em todas as unidades dos países marcados. Pode ter vários.",
     "searchPlaceholder": "Buscar por nome, e-mail, documento ou função…",
     "newUser": "Novo usuário",
     "newUserHint": "Informe nome e e-mail. O sistema gera uma senha temporária para o usuário entrar e criar a sua.",

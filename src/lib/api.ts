@@ -314,29 +314,30 @@ export async function deleteIntegracion(id: string): Promise<void> {
   if (error) throw error;
 }
 
-/** Sedes de cada perfil (perfil_id -> sede_id[]), para la pantalla de Usuarios. */
-export async function listSedesPorPerfil(): Promise<Record<string, string[]>> {
-  const { data } = await supabase.from('perfil_sedes').select('perfil_id, sede_id');
+/** Países de cada perfil (perfil_id -> pais_id[]), para la pantalla de Usuarios. */
+export async function listPaisesPorPerfil(): Promise<Record<string, string[]>> {
+  const { data } = await supabase.from('perfil_paises').select('perfil_id, pais_id');
   const mapa: Record<string, string[]> = {};
-  for (const r of (data ?? []) as { perfil_id: string; sede_id: string }[]) {
-    (mapa[r.perfil_id] ??= []).push(r.sede_id);
+  for (const r of (data ?? []) as { perfil_id: string; pais_id: string }[]) {
+    (mapa[r.perfil_id] ??= []).push(r.pais_id);
   }
   return mapa;
 }
 
 /**
- * Reemplaza el conjunto de sedes de un perfil y alinea la sede principal
- * (`perfiles.sede_id`) con la primera, todo en un RPC SECURITY DEFINER.
+ * Reemplaza el conjunto de países de un perfil.
  *
- * Antes se escribía `perfil_sedes` y `perfiles` por separado desde el cliente;
- * como la RLS de `perfiles` solo deja UPDATE al ADMIN, al Jefe (LIDER) le fallaba
- * con 403 y la ciudad no se guardaba. El RPC valida ADMIN/LIDER y hace ambas
- * escrituras de forma atómica (ver migración set_sedes_de_perfil).
+ * El alcance de un Técnico o Líder de sede se define por PAÍS: sus sedes son
+ * todas las del país, y la tabla `perfil_sedes` es solo la expansión que
+ * mantiene la base. Por eso no se escribe `perfil_sedes` desde el cliente: el
+ * RPC `set_paises_de_perfil` (SECURITY DEFINER) valida que quien llama sea
+ * ADMIN o Jefe (LIDER) —la RLS de `perfiles` no deja UPDATE al Jefe—, guarda
+ * los países y vuelve a expandir sedes y sede principal de forma atómica.
  */
-export async function setSedesDePerfil(perfilId: string, sedeIds: string[]): Promise<void> {
-  const { error } = await supabase.rpc('set_sedes_de_perfil', {
+export async function setPaisesDePerfil(perfilId: string, paisIds: string[]): Promise<void> {
+  const { error } = await supabase.rpc('set_paises_de_perfil', {
     p_perfil_id: perfilId,
-    p_sede_ids: sedeIds,
+    p_pais_ids: paisIds,
   });
   if (error) throw error;
 }
@@ -356,10 +357,10 @@ export async function updateSedeUsuario(id: string, sedeId: string | null): Prom
 
 export async function crearUsuario(p: {
   email: string; nombre: string; rol: RolUsuario;
-  cedula?: string; sedeId?: string | null;
+  cedula?: string; paisIds?: string[];
 }): Promise<{ email: string; password: string }> {
   const { data, error } = await supabase.functions.invoke('crear-usuario', {
-    body: { email: p.email, nombre: p.nombre, rol: p.rol, cedula: p.cedula, sede_id: p.sedeId ?? null },
+    body: { email: p.email, nombre: p.nombre, rol: p.rol, cedula: p.cedula, pais_ids: p.paisIds ?? [] },
   });
   if (error) {
     let msg = error.message;

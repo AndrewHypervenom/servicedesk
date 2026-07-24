@@ -57,10 +57,22 @@ export function puedeVerRuta(rol: RolUsuario | undefined, ruta: string): boolean
   return !permitidos || permitidos.includes(rol);
 }
 
-export function scopeEquipos(equipos: Equipo[], perfil: Perfil | null): Equipo[] {
+/**
+ * Recorta el parque a lo que la persona puede ver.
+ *
+ * El Líder de sede y el Técnico se asignan por PAÍS, así que su alcance son
+ * TODAS las sedes de sus países, no una sola ciudad: `sedesPermitidas` es esa
+ * lista ya expandida (`misSedes` del store). Se incluye además la sede
+ * principal por si el store aún no terminó de cargar la expansión.
+ */
+export function scopeEquipos(
+  equipos: Equipo[], perfil: Perfil | null, sedesPermitidas: string[] = [],
+): Equipo[] {
   if (!perfil) return [];
   if (perfil.rol === 'JEFE_SEDE' || perfil.rol === 'TECNICO') {
-    return equipos.filter((e) => e.sede_id && e.sede_id === perfil.sede_id);
+    const permitidas = new Set(sedesPermitidas);
+    if (perfil.sede_id) permitidas.add(perfil.sede_id);
+    return equipos.filter((e) => e.sede_id && permitidas.has(e.sede_id));
   }
   return equipos;
 }
