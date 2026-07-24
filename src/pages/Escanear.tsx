@@ -8,6 +8,10 @@ import { findByCode } from '@/lib/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { toast } from '@/components/ui/Toast';
 
+// Ancho del visor: lo fija el alto disponible, no el de la tarjeta. El botón de
+// la cámara lo comparte para quedar exactamente igual de ancho que el recuadro.
+const ANCHO_VISOR = 'mx-auto w-full max-w-[min(100%,34dvh)] sm:max-w-[min(100%,42dvh)]';
+
 export function Escanear() {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -51,28 +55,34 @@ export function Escanear() {
     <div className="max-w-xl mx-auto">
       <PageHeader title={t('scan.title')} subtitle={t('scan.subtitle')} icon={ScanLine} />
 
-      <div className="card p-6">
-        <div className="relative aspect-square rounded-3xl overflow-hidden bg-ink-900 mb-4">
+      <div className="card p-4 sm:p-6">
+        {/* La vista tiene que caber de una sola pantalla: escanear y luego
+            bajar a buscar a mano no funciona con el móvil en la mano. El
+            visor manda sobre el alto disponible (no sobre el ancho): sigue
+            siendo cuadrado, pero su lado se limita en `dvh`, así que se
+            encoge en pantallas bajas — y en un portátil tampoco desborda. */}
+        <div className={`relative aspect-square ${ANCHO_VISOR}
+                        rounded-3xl overflow-hidden bg-ink-900 mb-3 sm:mb-4`}>
           <video ref={videoRef} className="w-full h-full object-cover" muted playsInline />
           {!scanning && (
             <div className="absolute inset-0 grid place-items-center text-white/60">
               <div className="text-center">
-                <Camera size={48} className="mx-auto mb-3 opacity-50" />
-                <p className="text-sm">{t('scan.point')}</p>
+                <Camera size={40} className="mx-auto mb-2 opacity-50" />
+                <p className="text-xs sm:text-sm px-4">{t('scan.point')}</p>
               </div>
             </div>
           )}
           {scanning && (
             <>
-              <div className="absolute inset-8 border-2 border-white/60 rounded-2xl" />
-              <motion.div className="absolute left-8 right-8 h-0.5 bg-brand-400 shadow-[0_0_12px_rgba(10,132,255,0.8)]"
+              <div className="absolute inset-[12%] border-2 border-white/60 rounded-2xl" />
+              <motion.div className="absolute left-[12%] right-[12%] h-0.5 bg-brand-400 shadow-[0_0_12px_rgba(10,132,255,0.8)]"
                 initial={{ top: '10%' }} animate={{ top: ['10%', '90%', '10%'] }}
                 transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut' }} />
             </>
           )}
         </div>
 
-        <div className="flex gap-2">
+        <div className={`flex gap-2 ${ANCHO_VISOR}`}>
           {!scanning ? (
             <button onClick={start} className="btn-primary flex-1"><Camera size={18} /> {t('scan.start')}</button>
           ) : (
@@ -80,7 +90,7 @@ export function Escanear() {
           )}
         </div>
 
-        <div className="mt-5 pt-5 border-t border-ink-100 dark:border-white/10">
+        <div className="mt-4 pt-4 sm:mt-5 sm:pt-5 border-t border-ink-100 dark:border-white/10">
           <label className="label">{t('scan.manual')}</label>
           <div className="flex gap-2">
             <div className="relative flex-1">
