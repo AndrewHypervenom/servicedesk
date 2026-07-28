@@ -58,12 +58,20 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
   open: boolean; onClose: () => void; onSaved: () => void; equipo?: Equipo;
 }) {
   const { t } = useTranslation();
-  const { perfil } = useApp();
+  const { operaTodasLasSedes, misSedes } = useApp();
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
   const { data: marcas = [] } = useQuery({ queryKey: ['marcas'], queryFn: listMarcas });
   const { data: proveedores = [] } = useQuery({ queryKey: ['proveedores'], queryFn: listProveedores });
   const { data: colaboradores = [], isLoading: cargandoColabs } = useQuery({ queryKey: ['colaboradores'], queryFn: listColaboradores });
-  const sedeFija = perfil?.rol === 'JEFE_SEDE' || perfil?.rol === 'TECNICO';
+  // Quien no opera todas las sedes registra dentro de su alcance real: el mismo
+  // `misSedes` con el que ya se filtran Inventario, Dashboard y Analítica (puede
+  // cubrir varias, no solo la del perfil). Con una sola sede no hay nada que
+  // elegir y el campo queda fijo; con varias, se escoge entre ellas.
+  const sedesElegibles = operaTodasLasSedes() ? sedes : sedes.filter((s) => misSedes.includes(s.id));
+  const sedeFija = sedesElegibles.length <= 1 && !operaTodasLasSedes();
+  // La sede que se preselecciona al crear: la única de su alcance, si es que
+  // tiene una sola. Con varias se elige a mano para no colar un dato por defecto.
+  const sedePorDefecto = sedesElegibles.length === 1 ? sedesElegibles[0].id : null;
   const editando = !!equipo;
 
   // Solo la edición de un equipo existente es un recurso concreto que puede
@@ -84,6 +92,14 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
   }, [colaboradores]);
   const [f, setF] = useState<Partial<Equipo>>({});
   const set = (k: keyof Equipo, v: any) => setF((s) => ({ ...s, [k]: v }));
+
+  // Un equipo puede estar en una sede que no administro (lo movió un ADMIN, o
+  // llegó por importación). Se muestra tal cual —si no, el Select saldría vacío
+  // y guardar borraría el dato— pero no se deja cambiar: sacarlo de una sede
+  // ajena no me corresponde.
+  const sedeFueraDeAlcance = !!f.sede_id && !sedesElegibles.some((s) => s.id === f.sede_id);
+  const sedeActual = sedeFueraDeAlcance ? sedes.filter((s) => s.id === f.sede_id) : [];
+  const opcionesSede = [...sedesElegibles, ...sedeActual];
   const esPortatil = (f.tipo ?? 'PORTATIL') === 'PORTATIL';
 
   // Solo el portátil se identifica por modelo y serial; monitores, cargadores,
@@ -108,7 +124,7 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
     if (!open) return;
     setF(equipo
       ? { ...equipo }
-      : { tipo: 'PORTATIL', estado_fisico: 'BUENO', propiedad: 'EMPRESA', sede_id: sedeFija ? perfil?.sede_id : null });
+      : { tipo: 'PORTATIL', estado_fisico: 'BUENO', propiedad: 'EMPRESA', sede_id: sedePorDefecto });
   }, [open, equipo]);
 
   // El estado de asignación no viaja en el patch normal: cambiarlo debe dejar
@@ -275,9 +291,9 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
           <Select
             value={f.sede_id ?? ''}
             onChange={(v) => set('sede_id', v || null)}
-            disabled={sedeFija}
+            disabled={sedeFija || sedeFueraDeAlcance}
             placeholder={t('users.selectSede')}
-            options={[{ value: '', label: '—' }, ...sedes.map((s) => ({ value: s.id, label: s.pais_nombre ? `${s.nombre} · ${s.pais_nombre}` : s.nombre }))]}
+            options={[{ value: '', label: '—' }, ...opcionesSede.map((s) => ({ value: s.id, label: s.pais_nombre ? `${s.nombre} · ${s.pais_nombre}` : s.nombre }))]}
           />
         </div>
         <div>
