@@ -427,7 +427,13 @@
     "generate": "Generar acta de devolución",
     "done": "Devolución registrada",
     "selectMultiple": "Seleccione uno o varios equipos a devolver",
-    "noCandidates": "Este colaborador no tiene equipos asignados."
+    "noCandidates": "Este colaborador no tiene equipos asignados.",
+    "sinColaborador": "sin colaborador asignado",
+    "duenoActual": "Devolviendo equipos de {{quien}}",
+    "otroDueno": "Este equipo es de {{quien}} y esta devolución es de {{actual}}. Cada colaborador firma su propia acta: registre una devolución aparte.",
+    "otroDuenoCorto": "Otro colaborador",
+    "mezclaDuenos": "No se puede generar un acta con equipos de distintos colaboradores.",
+    "seleccionDesactualizada": "Algunos equipos cambiaron de estado o de responsable mientras llenaba el formulario y se quitaron de la selección. Revise la lista y vuelva a generar el acta."
   },
   "scan": {
     "title": "Escanear código QR",

@@ -427,7 +427,13 @@
     "generate": "Gerar termo de devolução",
     "done": "Devolução registrada",
     "selectMultiple": "Selecione um ou vários equipamentos para devolver",
-    "noCandidates": "Este colaborador não possui equipamentos atribuídos."
+    "noCandidates": "Este colaborador não possui equipamentos atribuídos.",
+    "sinColaborador": "sem colaborador atribuído",
+    "duenoActual": "Devolvendo equipamentos de {{quien}}",
+    "otroDueno": "Este equipamento é de {{quien}} e esta devolução é de {{actual}}. Cada colaborador assina o seu próprio termo: registre uma devolução separada.",
+    "otroDuenoCorto": "Outro colaborador",
+    "mezclaDuenos": "Não é possível gerar um termo com equipamentos de colaboradores diferentes.",
+    "seleccionDesactualizada": "Alguns equipamentos mudaram de estado ou de responsável enquanto o formulário era preenchido e foram removidos da seleção. Revise a lista e gere o termo novamente."
   },
   "scan": {
     "title": "Ler código QR",

@@ -53,7 +53,21 @@ export function Devolucion() {
     ['ASIGNADO', 'EN_MANTENIMIENTO'].includes(e.estado_asignacion) &&
     (!q || [fmtSerial(e.serial), e.marca, e.linea_modelo, e.codigo_qr, e.tipo].some((v) => v?.toLowerCase().includes(q.toLowerCase()))));
 
+  // Un acta de devolución la firma UNA persona y lleva UNA cédula: si se
+  // mezclaran equipos de varios colaboradores, el papel saldría a nombre del
+  // primero y los demás quedarían sin descargo. Por eso el flujo se ancla al
+  // dueño del primer equipo elegido y el resto queda bloqueado. Los equipos en
+  // mantenimiento sin cédula forman su propio grupo (null), devolubles entre sí.
+  const cedulaFlujo = seleccionados.length ? seleccionados[0].cedula_asignado ?? null : undefined;
+  const mismoDueno = (e: Equipo) => cedulaFlujo === undefined || (e.cedula_asignado ?? null) === cedulaFlujo;
+  const nombraDueno = (cedula: string | null | undefined) =>
+    cedula ? `C.C. ${cedula}` : t('return.sinColaborador');
+
   const toggleEquipo = (e: Equipo) => {
+    if (!sel[e.id] && !mismoDueno(e)) {
+      toast.error(t('return.otroDueno', { quien: nombraDueno(e.cedula_asignado), actual: nombraDueno(cedulaFlujo) }));
+      return;
+    }
     setSel((prev) => {
       const next = { ...prev };
       if (next[e.id]) delete next[e.id]; else next[e.id] = e;
@@ -61,7 +75,36 @@ export function Devolucion() {
     });
   };
 
-  const buildItems = (): ActaItem[] => seleccionados.map((e) => ({ equipo: e, observaciones: obs[e.id] }));
+  const buildItems = (items: Equipo[] = seleccionados): ActaItem[] =>
+    items.map((e) => ({ equipo: e, observaciones: obs[e.id] }));
+
+  /**
+   * Lo seleccionado son fotos del momento en que se marcó cada equipo: otro
+   * técnico pudo reasignarlo o devolverlo mientras se llenaba el formulario.
+   * Antes de firmar se contrasta con la base. Si algo cambió, se quita de la
+   * selección y se detiene el flujo: un acta con el dueño equivocado es
+   * exactamente el problema que se está evitando. Devuelve la lista vigente, o
+   * null si hubo cambios y el técnico debe revisar.
+   */
+  const revalidarSeleccion = async (): Promise<Equipo[] | null> => {
+    const { data: frescos } = await refetch();
+    // Sin datos frescos (red caída) no hay con qué contrastar: la base vuelve a
+    // validar en devolverEquipo, así que no se bloquea la devolución por eso.
+    if (!frescos) return seleccionados;
+    const porId = new Map(frescos.map((e) => [e.id, e]));
+    const vigentes: Equipo[] = [];
+    let cambio = false;
+    for (const e of seleccionados) {
+      const actual = porId.get(e.id);
+      const devolvible = actual && ['ASIGNADO', 'EN_MANTENIMIENTO'].includes(actual.estado_asignacion);
+      if (!devolvible || (actual.cedula_asignado ?? null) !== (e.cedula_asignado ?? null)) { cambio = true; continue; }
+      vigentes.push(actual);
+    }
+    setSel(Object.fromEntries(vigentes.map((e) => [e.id, e])));
+    if (!cambio) return vigentes;
+    toast.error(t('return.seleccionDesactualizada'));
+    return null;
+  };
 
   const vistaPrevia = async () => {
     if (!seleccionados.length) { toast.error(t('assign.noneSelected')); return; }
@@ -82,11 +125,14 @@ export function Devolucion() {
    * para firmar en físico hay que reservar ya el consecutivo, porque es el que
    * queda impreso en el papel que firma el colaborador.
    */
-  const asegurarActa = async (): Promise<Acta> => {
+  const asegurarActa = async (items: Equipo[] = seleccionados): Promise<Acta> => {
+    // Cinturón y tirantes: la lista ya impide mezclar dueños, pero un acta con
+    // dos cédulas es un documento inválido y no puede salir de aquí.
+    if (items.some((e) => !mismoDueno(e))) throw new Error(t('return.mezclaDuenos'));
     const datos = {
-      tipo: 'DEVOLUCION' as const, equipo_id: seleccionados[0].id,
-      items: seleccionados.map((e) => ({ equipo_id: e.id, observaciones: obs[e.id] })),
-      cedula_colaborador: seleccionados[0].cedula_asignado, observaciones: novedades,
+      tipo: 'DEVOLUCION' as const, equipo_id: items[0].id,
+      items: items.map((e) => ({ equipo_id: e.id, observaciones: obs[e.id] })),
+      cedula_colaborador: items[0].cedula_asignado, observaciones: novedades,
     };
     const previo = borradorRef.current;
     if (previo) {
@@ -137,11 +183,15 @@ export function Devolucion() {
     if (modo === 'manual' && !archivoFirmado) { toast.error(t('acta.faltaArchivo')); return; }
     setBusy(true);
     try {
-      const primero = seleccionados[0];
+      // Último contraste con la base antes de emitir el documento.
+      const vigentes = await revalidarSeleccion();
+      if (!vigentes) return;
+      if (!vigentes.length) { toast.error(t('assign.noneSelected')); return; }
+      const primero = vigentes[0];
       const colab = primero.cedula_asignado ? await getColaborador(primero.cedula_asignado) : null;
       // Reutiliza el acta ya reservada si se descargó para firmar a mano, así
       // el consecutivo del papel firmado es el que queda guardado.
-      const acta = await asegurarActa();
+      const acta = await asegurarActa(vigentes);
       // Firma física: el acta oficial es el escaneo firmado a mano; no se
       // guarda además la versión de firma digital (iría sin firma real).
       let documento: Blob;
@@ -153,7 +203,7 @@ export function Devolucion() {
       } else {
         await updateActa(acta.id, { firma_data: firma, firmado: !!firma });
         documento = await generarActaPdf({
-          tipo: 'DEVOLUCION', consecutivo: acta.consecutivo || 'ACTA', items: buildItems(),
+          tipo: 'DEVOLUCION', consecutivo: acta.consecutivo || 'ACTA', items: buildItems(vigentes),
           colaborador: colab, firmaDataUrl: firma, tecnico: perfil?.nombre,
           tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: perfil?.firma_data, novedades,
         });
@@ -162,7 +212,7 @@ export function Devolucion() {
       }
       // Ya está firmada y guardada: deja de ser un borrador descartable.
       borradorRef.current = null;
-      for (const e of seleccionados) {
+      for (const e of vigentes) {
         await devolverEquipo({
           equipoId: e.id, aProveedor: destino === 'proveedor', proveedor: proveedor || undefined,
           actaId: acta.id, registradoPor: perfil?.cedula || perfil?.nombre, obs: obs[e.id] || novedades,
@@ -194,6 +244,12 @@ export function Devolucion() {
               <span className="badge bg-brand-500/15 text-brand-600">{t('assign.selectedCount', { n: seleccionados.length })}</span>
             )}
           </div>
+          {/* A quién le queda esta acta: evita descubrirlo al ver el PDF. */}
+          {seleccionados.length > 0 && (
+            <div className="text-xs text-ink-500 dark:text-ink-300">
+              {t('return.duenoActual', { quien: nombraDueno(cedulaFlujo) })}
+            </div>
+          )}
           <div className="relative my-3">
             <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
             <input className="input pl-9" placeholder={t('common.searchSerial')} value={q} onChange={(e) => setQ(e.target.value)} />
@@ -201,10 +257,15 @@ export function Devolucion() {
           <div className="space-y-2 max-h-56 overflow-y-auto">
             {candidatos.map((e) => {
               const on = !!sel[e.id];
+              // Se deja clicable a propósito: el clic explica por qué no entra
+              // en esta acta, que es más útil que un botón muerto.
+              const ajeno = !mismoDueno(e);
               return (
                 <button key={e.id} onClick={() => toggleEquipo(e)}
                   className={`w-full text-left p-3 rounded-xl border transition-all flex items-center gap-3 ${
-                    on ? 'border-brand-500 bg-brand-500/5 ring-1 ring-brand-500' : 'border-ink-100 dark:border-white/10 hover:bg-ink-50 dark:hover:bg-white/5'}`}>
+                    on ? 'border-brand-500 bg-brand-500/5 ring-1 ring-brand-500'
+                      : ajeno ? 'border-ink-100 dark:border-white/10 opacity-45'
+                      : 'border-ink-100 dark:border-white/10 hover:bg-ink-50 dark:hover:bg-white/5'}`}>
                   <div className={`w-5 h-5 rounded-md grid place-items-center shrink-0 border ${on ? 'bg-brand-500 border-brand-500 text-white' : 'border-ink-300 dark:border-white/20'}`}>
                     {on && <Check size={13} />}
                   </div>
@@ -212,7 +273,9 @@ export function Devolucion() {
                     <div className="font-medium truncate">{e.marca} {e.linea_modelo} <span className="text-xs text-ink-400">· {e.tipo}</span></div>
                     <div className="text-xs text-ink-400 font-mono">{fmtSerial(e.serial)} {e.cedula_asignado && `· C.C. ${e.cedula_asignado}`}</div>
                   </div>
-                  <EstadoBadge estado={e.estado_asignacion} label={t(`estadoAsig.${e.estado_asignacion}`)} />
+                  {ajeno
+                    ? <span className="badge bg-ink-500/10 text-ink-500 shrink-0">{t('return.otroDuenoCorto')}</span>
+                    : <EstadoBadge estado={e.estado_asignacion} label={t(`estadoAsig.${e.estado_asignacion}`)} />}
                 </button>
               );
             })}
