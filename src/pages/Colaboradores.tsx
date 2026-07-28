@@ -16,13 +16,13 @@
  * golpe congela el navegador, y nadie mira más de las primeras treinta.
  */
 
-import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Building2, CalendarDays, Download, LayoutGrid, Mail, MapPin, Pencil, Plus, Search,
+  Building2, CalendarDays, CornerDownRight, Download, LayoutGrid, Mail, MapPin, Pencil, Plus, Search,
   Table2, Upload, UserCheck, UserMinus, UserPlus, Users, X,
 } from 'lucide-react';
 import { BotonBorrar } from '@/components/ui/BotonBorrar';
@@ -33,6 +33,7 @@ import { Select, type SelectOption } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { NumeroAnimado } from '@/components/ui/NumeroAnimado';
+import { Resaltado } from '@/components/ui/Resaltado';
 import { SkeletonGrid } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { FichaColaborador } from '@/components/colaboradores/FichaColaborador';
@@ -42,10 +43,12 @@ import {
 } from '@/lib/api';
 import { useEditingPresence } from '@/lib/presence/hooks';
 import { CoeditBanner, ResourcePeersChip } from '@/components/presence';
+import {
+  construirIndice, ETIQUETA_CAMPO, evaluar, terminosDe, type Resultado,
+} from '@/lib/colaboradores/buscar';
 import { colorEstatus, esEstatusActivo, estatusLegible } from '@/lib/colaboradores/estatus';
 import { exportRowsExcel } from '@/lib/excel';
 import { fmtDate, initials } from '@/lib/format';
-import { normNombre } from '@/lib/importador/normalizar';
 import { useApp } from '@/store/useApp';
 import type { Colaborador, Sede } from '@/types';
 
@@ -57,6 +60,34 @@ type Estado = 'todos' | 'activos' | 'inactivos';
 
 const sedeOption = (s: Sede): SelectOption =>
   ({ value: s.id, label: s.pais_nombre ? `${s.nombre} · ${s.pais_nombre}` : s.nombre });
+
+/**
+ * "Coincide por Líder: Camilo Pérez".
+ *
+ * Solo aparece en los resultados que no coincidieron por nombre ni cédula, que
+ * son justo los que si no se explican parecen un error del buscador.
+ */
+function PorQueCoincide({ resultado, terminos }: { resultado: Resultado; terminos: string[] }) {
+  const { t } = useTranslation();
+  if (resultado.directo || !resultado.coincidencias.length) return null;
+  return (
+    <div className="mt-1 flex items-start gap-1.5 text-[11px] leading-snug text-ink-400">
+      <CornerDownRight size={11} className="mt-[3px] shrink-0" />
+      <span className="min-w-0">
+        {t('collaborators.matchedBy')}{' '}
+        {resultado.coincidencias.slice(0, 2).map((c, i) => (
+          <span key={c.campo}>
+            {i > 0 && <span className="text-ink-300 dark:text-ink-500"> · </span>}
+            {t(ETIQUETA_CAMPO[c.campo])}:{' '}
+            <span className="text-ink-500 dark:text-ink-300">
+              <Resaltado texto={c.valor} terminos={terminos} />
+            </span>
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}
 
 /** Opciones de un filtro sacadas de los propios datos, ordenadas por frecuencia. */
 function opcionesDe(colabs: Colaborador[], campo: keyof Colaborador): SelectOption[] {
@@ -70,12 +101,6 @@ function opcionesDe(colabs: Colaborador[], campo: keyof Colaborador): SelectOpti
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([v, n]) => ({ value: v, label: v, description: i18n.t('collaborators.peopleCount', { count: n }) }));
 }
-
-/** Todo lo buscable de una persona en una sola cadena normalizada. */
-const heno = (c: Colaborador): string => normNombre([
-  c.nombre, c.cedula, c.correo, c.correo_personal, c.cargo, c.area, c.ciudad,
-  c.proyecto, c.centro_costos, c.lider, c.coordinador, c.gerente, c.telefono,
-].filter(Boolean).join(' '));
 
 export function Colaboradores() {
   const { t, i18n } = useTranslation();
@@ -132,11 +157,8 @@ export function Colaboradores() {
   }, []);
 
   // El índice de búsqueda se calcula una vez por carga, no en cada tecla.
-  const indice = useMemo(() => {
-    const m = new Map<string, string>();
-    for (const c of colabs) m.set(c.cedula, heno(c));
-    return m;
-  }, [colabs]);
+  const indice = useMemo(() => construirIndice(colabs), [colabs]);
+  const terminos = useMemo(() => terminosDe(qDiferida), [qDiferida]);
 
   const activo = (c: Colaborador) => (c.estado_interno ? esEstatusActivo(c.estado_interno) : c.activo);
 
@@ -153,22 +175,20 @@ export function Colaboradores() {
     return { total: colabs.length, activos, inactivos: colabs.length - activos, sedes: sedesCubiertas.size, nuevos };
   }, [colabs]);
 
-  const filtrados = useMemo(() => {
-    const terminos = normNombre(qDiferida).split(' ').filter(Boolean);
-    const res = colabs.filter((c) => {
-      if (estado === 'activos' && !activo(c)) return false;
-      if (estado === 'inactivos' && activo(c)) return false;
-      if (sedeF === SIN_SEDE ? !!c.sede_id : sedeF && c.sede_id !== sedeF) return false;
-      if (ciudad && c.ciudad !== ciudad) return false;
-      if (area && c.area !== area) return false;
-      if (contrato && c.termino_contrato !== contrato) return false;
-      if (terminos.length) {
-        const h = indice.get(c.cedula) ?? '';
-        // Todos los términos deben aparecer: "juan bogota" busca ambos, no uno u otro.
-        if (!terminos.every((x) => h.includes(x))) return false;
-      }
-      return true;
-    });
+  const { resultados, directos } = useMemo(() => {
+    const res: Resultado[] = [];
+    for (const c of colabs) {
+      if (estado === 'activos' && !activo(c)) continue;
+      if (estado === 'inactivos' && activo(c)) continue;
+      if (sedeF === SIN_SEDE ? !!c.sede_id : sedeF && c.sede_id !== sedeF) continue;
+      if (ciudad && c.ciudad !== ciudad) continue;
+      if (area && c.area !== area) continue;
+      if (contrato && c.termino_contrato !== contrato) continue;
+      // Todos los términos deben aparecer ("juan bogota" busca ambos); el
+      // resultado dice además si fue por nombre/cédula o por otro campo.
+      const r = evaluar(c, indice.get(c.cedula), terminos);
+      if (r) res.push(r);
+    }
 
     const cmp: Record<Orden, (a: Colaborador, b: Colaborador) => number> = {
       nombre: (a, b) => a.nombre.localeCompare(b.nombre),
@@ -178,8 +198,20 @@ export function Colaboradores() {
       antiguedad: (a, b) => (a.fecha_ingreso ?? '9999').localeCompare(b.fecha_ingreso ?? '9999'),
       actualizado: (a, b) => (b.actualizado_en ?? b.creado_en ?? '').localeCompare(a.actualizado_en ?? a.creado_en ?? ''),
     };
-    return [...res].sort(cmp[orden]);
-  }, [colabs, indice, qDiferida, estado, sedeF, ciudad, area, contrato, orden]);
+    // La persona buscada va primero, pase lo que pase con el orden elegido:
+    // quien escribe "camilo" quiere a Camilo, no al equipo de su jefe.
+    res.sort((a, b) => Number(b.directo) - Number(a.directo) || cmp[orden](a.colaborador, b.colaborador));
+
+    return { resultados: res, directos: res.reduce((n, r) => n + (r.directo ? 1 : 0), 0) };
+  }, [colabs, indice, terminos, estado, sedeF, ciudad, area, contrato, orden]);
+
+  const filtrados = useMemo(() => resultados.map((r) => r.colaborador), [resultados]);
+  /** El porqué de cada fila, para explicarlo donde se pinta. */
+  const porCedula = useMemo(
+    () => new Map(resultados.map((r) => [r.colaborador.cedula, r])),
+    [resultados],
+  );
+  const indirectos = resultados.length - directos;
 
   // Cualquier cambio de filtro reinicia la tanda: quedarse en la página 4 de un
   // resultado que ya no existe desorienta más de lo que ahorra.
@@ -270,9 +302,12 @@ export function Colaboradores() {
           </span>
           <span className="min-w-0">
             <span className="block font-medium truncate group-hover/nombre:text-brand-600 dark:group-hover/nombre:text-brand-400 transition-colors">
-              {c.nombre}
+              <Resaltado texto={c.nombre} terminos={terminos} />
             </span>
-            <span className="block text-xs text-ink-400">C.C. {c.cedula}</span>
+            <span className="block text-xs text-ink-400">C.C. <Resaltado texto={c.cedula} terminos={terminos} /></span>
+            {porCedula.get(c.cedula)?.directo === false && (
+              <PorQueCoincide resultado={porCedula.get(c.cedula)!} terminos={terminos} />
+            )}
           </span>
           <ResourcePeersChip type="colaborador" id={c.cedula} />
         </button>
@@ -500,13 +535,25 @@ export function Colaboradores() {
 
       {/* -------------------------------------------------------- resultado */}
       {!isLoading && (
-        <div className="flex items-center justify-between gap-3 mb-3 px-1">
+        <div className="mb-3 px-1 space-y-1">
           <p className="text-sm text-ink-400">
             {t('collaborators.showing', { visibles: mostrados.length, total: filtrados.length })}
             {hayFiltros && colabs.length !== filtrados.length && (
               <span className="text-ink-300 dark:text-ink-500"> · {t('collaborators.ofTotal', { total: colabs.length })}</span>
             )}
           </p>
+
+          {/* Desglose de la búsqueda: cuánto es la persona y cuánto es ruido útil. */}
+          {terminos.length > 0 && resultados.length > 0 && (
+            <p className="text-xs text-ink-400">
+              {directos > 0
+                ? t('collaborators.matchDirect', { count: directos })
+                : <span className="font-medium text-amber-600 dark:text-warning">{t('collaborators.noDirectMatch')}</span>}
+              {indirectos > 0 && (
+                <span className="text-ink-300 dark:text-ink-500"> · {t('collaborators.matchIndirect', { count: indirectos })}</span>
+              )}
+            </p>
+          )}
         </div>
       )}
 
@@ -534,7 +581,8 @@ export function Colaboradores() {
         <div className="card">
           <EmptyState
             variant="search" icon={Search}
-            title={t('common.noResultsTitle')} description={t('common.noResultsDesc')}
+            title={terminos.length ? t('collaborators.noDirectMatch') : t('common.noResultsTitle')}
+            description={terminos.length ? t('collaborators.noMatchDesc') : t('common.noResultsDesc')}
             action={<Button onClick={limpiar}>{t('common.clearFilters')}</Button>}
           />
         </div>
@@ -544,67 +592,81 @@ export function Colaboradores() {
       {!isLoading && vista === 'tarjetas' && filtrados.length > 0 && (
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {mostrados.map((c, i) => (
-            <motion.div
-              key={c.cedula}
-              initial={{ opacity: 0, y: 12 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: Math.min((i % PASO_VISIBLES) * 0.02, 0.3), type: 'spring', damping: 26, stiffness: 260 }}
-              className="card-interactive p-5 relative group cursor-pointer"
-              onClick={() => setFicha(c)}
-            >
-              <div
-                className="absolute top-3 right-3 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
-                onClick={(e) => e.stopPropagation()}
+            <Fragment key={c.cedula}>
+              {/* Línea que separa a quien se buscó de quien solo fue mencionado. */}
+              {terminos.length > 0 && i === directos && indirectos > 0 && (
+                <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-3 pt-1">
+                  <span className="text-xs font-medium text-ink-400">{t('collaborators.otherMatches')}</span>
+                  <span className="h-px flex-1 bg-ink-100 dark:bg-white/10" />
+                </div>
+              )}
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: Math.min((i % PASO_VISIBLES) * 0.02, 0.3), type: 'spring', damping: 26, stiffness: 260 }}
+                className="card-interactive p-5 relative group cursor-pointer"
+                onClick={() => setFicha(c)}
               >
-                {canEdit() && (
-                  <button onClick={() => abrirEdicion(c)} title={t('common.edit')}
-                    className="p-1.5 rounded-lg text-ink-400 hover:bg-ink-100 dark:hover:bg-white/10 transition">
-                    <Pencil size={15} />
-                  </button>
-                )}
-                <BotonBorrar
-                  entidad="colaboradores" id={c.cedula} etiqueta={`${c.nombre} · C.C. ${c.cedula}`}
-                  invalidar={['colabs', 'colaboradores', 'solicitudesPendientes']}
-                  className="p-1.5 rounded-lg text-danger hover:bg-danger/10 transition"
-                />
-              </div>
-
-              <div className="flex items-center gap-3 mb-3 pr-14">
-                <div className="w-11 h-11 shrink-0 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center font-bold">
-                  {initials(c.nombre)}
+                <div
+                  className="absolute top-3 right-3 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {canEdit() && (
+                    <button onClick={() => abrirEdicion(c)} title={t('common.edit')}
+                      className="p-1.5 rounded-lg text-ink-400 hover:bg-ink-100 dark:hover:bg-white/10 transition">
+                      <Pencil size={15} />
+                    </button>
+                  )}
+                  <BotonBorrar
+                    entidad="colaboradores" id={c.cedula} etiqueta={`${c.nombre} · C.C. ${c.cedula}`}
+                    invalidar={['colabs', 'colaboradores', 'solicitudesPendientes']}
+                    className="p-1.5 rounded-lg text-danger hover:bg-danger/10 transition"
+                  />
                 </div>
-                <div className="min-w-0 flex-1">
-                  <div className="font-medium truncate">{c.nombre}</div>
-                  <div className="text-xs text-ink-400">C.C. {c.cedula}</div>
+
+                <div className="flex items-center gap-3 mb-3 pr-14">
+                  <div className="w-11 h-11 shrink-0 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center font-bold">
+                    {initials(c.nombre)}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium truncate"><Resaltado texto={c.nombre} terminos={terminos} /></div>
+                    <div className="text-xs text-ink-400">C.C. <Resaltado texto={c.cedula} terminos={terminos} /></div>
+                  </div>
+                  <ResourcePeersChip type="colaborador" id={c.cedula} />
                 </div>
-                <ResourcePeersChip type="colaborador" id={c.cedula} />
-              </div>
 
-              <div className="flex flex-wrap gap-1.5 mb-3">
-                <span className={`badge ${colorEstatus(c.estado_interno ?? (c.activo ? 'ACTIVO' : ''))}`}>
-                  {c.estado_interno ? estatusLegible(c.estado_interno) : c.activo ? t('collaborators.active') : t('collaborators.inactive')}
-                </span>
-                {c.area && <span className="badge bg-ink-100 dark:bg-white/10 text-ink-600 dark:text-ink-200">{c.area}</span>}
-              </div>
-
-              <div className="space-y-1.5 text-sm text-ink-500 dark:text-ink-300">
-                {c.cargo && <div className="truncate">{c.cargo}</div>}
-                {(c.centro_costos ?? c.proyecto) && (
-                  <div className="flex items-center gap-2 min-w-0"><Building2 size={14} className="shrink-0" /> <span className="truncate">{c.centro_costos ?? c.proyecto}</span></div>
+                {porCedula.get(c.cedula)?.directo === false && (
+                  <div className="-mt-2 mb-3">
+                    <PorQueCoincide resultado={porCedula.get(c.cedula)!} terminos={terminos} />
+                  </div>
                 )}
-                {c.correo && <div className="flex items-center gap-2 min-w-0"><Mail size={14} className="shrink-0" /> <span className="truncate">{c.correo}</span></div>}
-                <div className="flex items-center gap-2 min-w-0">
-                  <MapPin size={14} className="shrink-0" />
-                  <span className="truncate">
-                    {nombreSede(c) ?? <span className="text-amber-600 dark:text-warning">{t('collaborators.noSede')}</span>}
-                    {c.ciudad && nombreSede(c) !== c.ciudad && <span className="text-ink-400"> · {c.ciudad}</span>}
+
+                <div className="flex flex-wrap gap-1.5 mb-3">
+                  <span className={`badge ${colorEstatus(c.estado_interno ?? (c.activo ? 'ACTIVO' : ''))}`}>
+                    {c.estado_interno ? estatusLegible(c.estado_interno) : c.activo ? t('collaborators.active') : t('collaborators.inactive')}
                   </span>
+                  {c.area && <span className="badge bg-ink-100 dark:bg-white/10 text-ink-600 dark:text-ink-200">{c.area}</span>}
                 </div>
-                {c.fecha_ingreso && (
-                  <div className="flex items-center gap-2"><CalendarDays size={14} className="shrink-0" /> {fmtDate(c.fecha_ingreso, i18n.language)}</div>
-                )}
-              </div>
-            </motion.div>
+
+                <div className="space-y-1.5 text-sm text-ink-500 dark:text-ink-300">
+                  {c.cargo && <div className="truncate">{c.cargo}</div>}
+                  {(c.centro_costos ?? c.proyecto) && (
+                    <div className="flex items-center gap-2 min-w-0"><Building2 size={14} className="shrink-0" /> <span className="truncate">{c.centro_costos ?? c.proyecto}</span></div>
+                  )}
+                  {c.correo && <div className="flex items-center gap-2 min-w-0"><Mail size={14} className="shrink-0" /> <span className="truncate">{c.correo}</span></div>}
+                  <div className="flex items-center gap-2 min-w-0">
+                    <MapPin size={14} className="shrink-0" />
+                    <span className="truncate">
+                      {nombreSede(c) ?? <span className="text-amber-600 dark:text-warning">{t('collaborators.noSede')}</span>}
+                      {c.ciudad && nombreSede(c) !== c.ciudad && <span className="text-ink-400"> · {c.ciudad}</span>}
+                    </span>
+                  </div>
+                  {c.fecha_ingreso && (
+                    <div className="flex items-center gap-2"><CalendarDays size={14} className="shrink-0" /> {fmtDate(c.fecha_ingreso, i18n.language)}</div>
+                  )}
+                </div>
+              </motion.div>
+            </Fragment>
           ))}
         </div>
       )}

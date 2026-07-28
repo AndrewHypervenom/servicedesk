@@ -1,13 +1,29 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import { Sidebar } from './Sidebar';
 import { Topbar } from './Topbar';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { PresenceSync, SameViewAlert } from '@/components/presence';
+import { useApp } from '@/store/useApp';
 
 export function AppLayout() {
   const [open, setOpen] = useState(false);
   const { pathname } = useLocation();
+  const { navColapsado, toggleNav } = useApp();
+
+  // Ctrl/⌘ + B pliega y despliega el menú, como en los editores. Se ignora
+  // mientras se escribe, para no robarle el atajo a un campo de texto.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== 'b' || !(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const el = document.activeElement;
+      if (el instanceof HTMLElement && (el.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName))) return;
+      e.preventDefault();
+      toggleNav();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [toggleNav]);
 
   return (
     <div className="relative min-h-screen flex bg-ink-50 dark:bg-ink-900 bg-grid">
@@ -22,7 +38,12 @@ export function AppLayout() {
         <span />
       </div>
 
-      <Sidebar open={open} onClose={() => setOpen(false)} />
+      <Sidebar
+        open={open}
+        onClose={() => setOpen(false)}
+        colapsado={navColapsado}
+        onToggle={toggleNav}
+      />
 
       <div className="relative z-10 flex-1 flex flex-col min-w-0">
         <Topbar onMenu={() => setOpen(true)} />

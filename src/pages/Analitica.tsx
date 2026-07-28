@@ -9,6 +9,7 @@ import {
 import { ChartPie, FileDown, Loader2 } from 'lucide-react';
 import { listEquipos, listSedes, movimientosDesde } from '@/lib/api';
 import { scopeEquipos } from '@/lib/roles';
+import { contratoPorVencer, contratoVencido } from '@/lib/estados';
 import { useApp } from '@/store/useApp';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { NumeroAnimado } from '@/components/ui/NumeroAnimado';
@@ -81,14 +82,14 @@ export function Analitica() {
   const operativo = total - cuenta((e) => e.estado_asignacion === 'DE_BAJA');
   const utilizacion = operativo > 0 ? Math.round((asignados / operativo) * 100) : 0;
 
-  const porVencer = useMemo(() => {
-    const limite = Date.now() + 30 * 24 * 60 * 60 * 1000;
-    return equipos.filter((e) => {
-      if (e.propiedad !== 'RENTADO' || !e.fecha_vencimiento_contrato) return false;
-      const v = new Date(e.fecha_vencimiento_contrato).getTime();
-      return v >= Date.now() && v <= limite;
-    }).length;
-  }, [equipos]);
+  // Contratos que hay que atender: los que ya vencieron y los que vencen dentro
+  // de 30 días. Los vencidos entran en la misma cifra porque son el caso más
+  // urgente de todos —el equipo ya no se puede entregar—, y dejarlos fuera hacía
+  // que un contrato desapareciera del indicador justo el día en que se volvía un
+  // problema. Se desglosan en la nota para que el número no esconda la mezcla.
+  const vencidos = useMemo(() => equipos.filter(contratoVencido).length, [equipos]);
+  const proximos = useMemo(() => equipos.filter((e) => contratoPorVencer(e)).length, [equipos]);
+  const porVencer = vencidos + proximos;
 
   // ── Series ────────────────────────────────────────────────────────────
   const porEstado = useMemo(() => {
@@ -213,7 +214,8 @@ export function Analitica() {
     { label: t('analytics.kpiTotal'), value: total, sufijo: '' },
     { label: t('analytics.kpiUtilization'), value: utilizacion, sufijo: '%', nota: t('analytics.kpiUtilizationNote') },
     { label: t('analytics.kpiAvailable'), value: disponibles, sufijo: '' },
-    { label: t('analytics.kpiExpiring'), value: porVencer, sufijo: '', nota: t('analytics.kpiExpiringNote') },
+    { label: t('analytics.kpiExpiring'), value: porVencer, sufijo: '',
+      nota: t('analytics.kpiExpiringNote', { vencidos, proximos }) },
   ];
 
   return (

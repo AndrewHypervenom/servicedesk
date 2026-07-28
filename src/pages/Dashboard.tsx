@@ -11,7 +11,8 @@ import {
 } from 'lucide-react';
 import { useMemo } from 'react';
 import { listEquipos, recentMovimientos } from '@/lib/api';
-import { fmtDate, diasRestantes, fmtSerial } from '@/lib/format';
+import { fmtDate, fmtSerial } from '@/lib/format';
+import { diasDeContrato } from '@/lib/estados';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonStats, SkeletonChart, SkeletonText } from '@/components/ui/Skeleton';
@@ -95,10 +96,11 @@ export function Dashboard() {
   const byType = Array.from(new Set(equipos.map((e) => e.tipo)))
     .map((tp) => ({ name: t(`tipo.${tp}`), value: count((e) => e.tipo === tp) }));
 
+  // Vencidos primero (días negativos): son los que hay que resolver ya, porque
+  // además de estar fuera de contrato ya no se pueden entregar a nadie.
   const expiring = equipos
-    .filter((e) => e.propiedad === 'RENTADO' && e.fecha_vencimiento_contrato)
-    .map((e) => ({ e, dias: diasRestantes(e.fecha_vencimiento_contrato) ?? 999 }))
-    .filter((x) => x.dias >= 0 && x.dias <= 30)
+    .map((e) => ({ e, dias: diasDeContrato(e) }))
+    .filter((x): x is { e: typeof equipos[number]; dias: number } => x.dias !== null && x.dias <= 30)
     .sort((a, b) => a.dias - b.dias);
 
   const quick = [
@@ -217,22 +219,34 @@ export function Dashboard() {
             <EmptyState variant="search" icon={CheckCircle2} title={t('dashboard.noExpiring')} className="!py-8" />
           ) : (
             <div className="space-y-2">
-              {expiring.map(({ e, dias }, i) => (
+              {expiring.map(({ e, dias }, i) => {
+                const vencido = dias < 0;
+                return (
                 <motion.div key={e.id}
                   initial={{ opacity: 0, x: -12 }} animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: Math.min(i, 8) * 0.05, duration: 0.4, ease: [0.16, 1, 0.3, 1] }}>
                 <Link to={`/equipo/${e.id}`}
-                  className="flex items-center gap-3 p-3 rounded-xl bg-warning/5 hover:bg-warning/10
-                             hover:translate-x-1 transition-[background-color,transform] duration-200">
-                  <div className="w-10 h-10 rounded-xl bg-warning/15 text-amber-600 dark:text-warning grid place-items-center font-bold text-sm">{dias}</div>
+                  className={`flex items-center gap-3 p-3 rounded-xl hover:translate-x-1
+                             transition-[background-color,transform] duration-200 ${
+                    vencido ? 'bg-danger/8 hover:bg-danger/15' : 'bg-warning/5 hover:bg-warning/10'}`}>
+                  <div className={`w-10 h-10 rounded-xl grid place-items-center font-bold shrink-0 ${
+                    vencido
+                      ? 'bg-danger/15 text-red-600 dark:text-danger'
+                      : 'bg-warning/15 text-amber-600 dark:text-warning'}`}>
+                    {vencido ? <AlertTriangle size={18} /> : <span className="text-sm">{dias}</span>}
+                  </div>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-medium truncate">{e.marca} {e.linea_modelo}</div>
-                    <div className="text-xs text-ink-400">{fmtSerial(e.serial)} · {e.proveedor_propietario} · {e.numero_contrato}</div>
+                    <div className="text-xs text-ink-400 truncate">{fmtSerial(e.serial)} · {e.proveedor_propietario} · {e.numero_contrato}</div>
                   </div>
-                  <div className="text-xs text-ink-400">{fmtDate(e.fecha_vencimiento_contrato, i18n.language)}</div>
+                  <div className={`text-xs shrink-0 text-right ${vencido ? 'text-red-600 dark:text-danger font-medium' : 'text-ink-400'}`}>
+                    {vencido && <div>{t('dashboard.expiredTag')}</div>}
+                    {fmtDate(e.fecha_vencimiento_contrato, i18n.language)}
+                  </div>
                 </Link>
                 </motion.div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>

@@ -2,16 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
-import { UserPlus, Search, Check, ArrowRight, ArrowLeft, FileSignature, Eye, Plus, X, SearchX } from 'lucide-react';
+import { UserPlus, Search, Check, ArrowRight, ArrowLeft, FileSignature, Eye, Plus, X, SearchX, AlertTriangle, Wrench, FileWarning } from 'lucide-react';
 import { listEquipos, getColaborador, asignarEquipo, createActa, updateActa, deleteActa, subirPdfActa, subirActaFirmada, listSedes } from '@/lib/api';
 import { generarActaPdf, abrirBlob, type ActaItem } from '@/lib/pdf';
 import { ACTA_ASIGNACION } from '@/lib/actaTemplates';
-import { fmtSerial } from '@/lib/format';
+import { fmtDate, fmtSerial } from '@/lib/format';
+import { aptitudEntrega, motivoNoEntregable, type MotivoNoEntregable } from '@/lib/estados';
 import { useTrabajoEnCurso } from '@/lib/actualizacion';
+import { CambiarEstadoModal } from '@/components/CambiarEstadoModal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FirmaActa, type FirmaActaHandle } from '@/components/ui/FirmaActa';
-import { EstadoBadge } from '@/components/ui/Badge';
+import { EstadoBadge, FisicoBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { useApp } from '@/store/useApp';
@@ -20,11 +22,13 @@ import { CoeditBanner } from '@/components/presence';
 import type { Acta, Colaborador, Equipo } from '@/types';
 
 export function Asignar() {
-  const { t } = useTranslation();
-  const { perfil, puedeAsignarASede } = useApp();
+  const { t, i18n } = useTranslation();
+  const { perfil, puedeAsignarASede, can } = useApp();
   const { data: equipos = [], refetch } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
   const disponibles = equipos.filter((e) => e.estado_asignacion === 'DISPONIBLE');
+  // Mandar a mantenimiento es un cambio de estado: mismos roles que en la ficha.
+  const puedeReparar = can('ADMIN', 'LIDER', 'JEFE_SEDE');
 
   const [step, setStep] = useState(0);
   const [cedula, setCedula] = useState('');
@@ -35,6 +39,10 @@ export function Asignar() {
   const [q, setQ] = useState('');
   const [novedades, setNovedades] = useState('');
   const [busy, setBusy] = useState(false);
+  // Confirmación explícita para entregar un equipo con falla conocida.
+  const [aceptaFalla, setAceptaFalla] = useState(false);
+  // Equipo que se está mandando a mantenimiento desde este mismo flujo.
+  const [aReparar, setAReparar] = useState<Equipo | null>(null);
   const firmaRef = useRef<FirmaActaHandle>(null);
   // Acta reservada: se crea al descargarla para firmar a mano, para que el
   // papel salga con su consecutivo definitivo y no con un marcador.
@@ -81,7 +89,35 @@ export function Asignar() {
     setColab(c);
   };
 
+  // Equipos con falla que el técnico eligió igual: el aviso se muestra por
+  // ellos y hay que confirmarlo antes de seguir.
+  const conFalla = seleccionados.filter((e) => aptitudEntrega(e.estado_fisico) === 'ADVERTENCIA');
+  // Cinturón y tirantes: si un equipo se dañó (o se le venció el contrato)
+  // entre la carga y el guardado, aquí se detiene igual (la lista ya no deja
+  // elegirlo). La base lo vuelve a validar en el trigger de asignación.
+  const bloqueadosElegidos = seleccionados.filter((e) => motivoNoEntregable(e) !== null);
+  const faltaConfirmarFalla = conFalla.length > 0 && !aceptaFalla;
+
+  // Un solo texto para cada motivo, usado en el toast y en el aviso de la fila.
+  const textoBloqueo = (e: Equipo, motivo: MotivoNoEntregable) =>
+    motivo === 'CONTRATO'
+      ? t('assign.contratoVencidoNoAsignable', { fecha: fmtDate(e.fecha_vencimiento_contrato, i18n.language) })
+      : t('assign.danadoNoAsignable', { estado: t(`estadoFis.${e.estado_fisico}`).toLowerCase() });
+
+  // Cambiar de equipos vuelve a pedir la confirmación: se acepta una falla
+  // concreta, no "las fallas" en general.
+  const idsConFalla = conFalla.map((e) => e.id).sort().join(',');
+  useEffect(() => { setAceptaFalla(false); }, [idsConFalla]);
+
   const toggleEquipo = (e: Equipo) => {
+    // Un equipo dañado, de baja o con el contrato de renta vencido no entra en
+    // un acta de entrega: lo que corresponde es repararlo o devolverlo al
+    // proveedor, no entregarlo así.
+    const motivo = motivoNoEntregable(e);
+    if (motivo && !sel[e.id]) {
+      toast.error(textoBloqueo(e, motivo));
+      return;
+    }
     setSel((prev) => {
       const next = { ...prev };
       if (next[e.id]) delete next[e.id]; else next[e.id] = e;
@@ -160,6 +196,12 @@ export function Asignar() {
     if (!colab) return;
     if (!seleccionados.length) { toast.error(t('assign.noneSelected')); return; }
     if (excedePortatiles) { toast.error(t('assign.requiereAdmin')); return; }
+    if (bloqueadosElegidos.length) {
+      const e = bloqueadosElegidos[0];
+      toast.error(textoBloqueo(e, motivoNoEntregable(e)!));
+      return;
+    }
+    if (faltaConfirmarFalla) { toast.error(t('assign.confirmaFalla')); return; }
     const modo = firmaRef.current?.getMode() ?? 'digital';
     const firma = modo === 'digital' ? firmaRef.current?.toDataURL() : null;
     const archivoFirmado = modo === 'manual' ? firmaRef.current?.getArchivo() : null;
@@ -209,15 +251,19 @@ export function Asignar() {
       abrirBlob(documento, nombreDoc);
       toast.success(t('assign.done'));
       setStep(0); setCedula(''); setBuscado(false); setColab(null);
-      setSel({}); setObs({}); setNovedades('');
+      setSel({}); setObs({}); setNovedades(''); setAceptaFalla(false);
       refetch();
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
     finally { setBusy(false); }
   };
 
   const steps = [t('assign.step1'), t('assign.step2multi'), t('assign.step3')];
-  const filtered = disponibles.filter((e) =>
-    !q || [fmtSerial(e.serial), e.marca, e.linea_modelo, e.codigo_qr, e.tipo].some((v) => v?.toLowerCase().includes(q.toLowerCase())));
+  // Los no entregables se muestran igual —si no, buscar su serial no daría nada
+  // y parecería un error— pero al final de la lista y sin poder elegirlos.
+  const filtered = disponibles
+    .filter((e) => !q || [fmtSerial(e.serial), e.marca, e.linea_modelo, e.codigo_qr, e.tipo].some((v) => v?.toLowerCase().includes(q.toLowerCase())))
+    .sort((a, b) => Number(motivoNoEntregable(a) !== null) - Number(motivoNoEntregable(b) !== null));
+  const bloqueadosVisibles = filtered.filter((e) => motivoNoEntregable(e) !== null).length;
 
   const dato = (label: string, value?: string | null) => (
     <div>
@@ -307,25 +353,92 @@ export function Asignar() {
             <div className="space-y-2 max-h-72 overflow-y-auto">
               {filtered.map((e) => {
                 const on = !!sel[e.id];
+                const aptitud = aptitudEntrega(e.estado_fisico);
+                const motivo = motivoNoEntregable(e);
+                const bloqueado = motivo !== null;
                 return (
-                  <button key={e.id} onClick={() => toggleEquipo(e)}
-                    className={`w-full text-left p-3 rounded-xl border transition-all flex items-center gap-3 ${
-                      on ? 'border-brand-500 bg-brand-500/5 ring-1 ring-brand-500' : 'border-ink-100 dark:border-white/10 hover:bg-ink-50 dark:hover:bg-white/5'}`}>
-                    <div className={`w-5 h-5 rounded-md grid place-items-center shrink-0 border ${on ? 'bg-brand-500 border-brand-500 text-white' : 'border-ink-300 dark:border-white/20'}`}>
-                      {on && <Check size={13} />}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="font-medium truncate">{e.marca} {e.linea_modelo} <span className="text-xs text-ink-400">· {e.tipo}</span></div>
-                      <div className="text-xs text-ink-400 font-mono">{fmtSerial(e.serial)} · {e.codigo_qr}</div>
-                    </div>
-                    <EstadoBadge estado={e.estado_asignacion} label={t(`estadoAsig.${e.estado_asignacion}`)} />
-                  </button>
+                  <div key={e.id}
+                    className={`rounded-xl border transition-all ${
+                      bloqueado ? 'border-danger/25 bg-danger/[0.04]'
+                        : on ? 'border-brand-500 bg-brand-500/5 ring-1 ring-brand-500'
+                          : 'border-ink-100 dark:border-white/10 hover:bg-ink-50 dark:hover:bg-white/5'}`}>
+                    <button
+                      type="button"
+                      onClick={() => toggleEquipo(e)}
+                      disabled={bloqueado}
+                      aria-disabled={bloqueado}
+                      title={motivo ? textoBloqueo(e, motivo) : undefined}
+                      className={`w-full text-left p-3 flex items-center gap-3 ${bloqueado ? 'cursor-not-allowed opacity-70' : ''}`}
+                    >
+                      <div className={`w-5 h-5 rounded-md grid place-items-center shrink-0 border ${
+                        bloqueado ? 'border-danger/40 text-red-600 dark:text-danger'
+                          : on ? 'bg-brand-500 border-brand-500 text-white' : 'border-ink-300 dark:border-white/20'}`}>
+                        {bloqueado ? <X size={13} /> : on && <Check size={13} />}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium truncate">{e.marca} {e.linea_modelo} <span className="text-xs text-ink-400">· {e.tipo}</span></div>
+                        <div className="text-xs text-ink-400 font-mono">{fmtSerial(e.serial)} · {e.codigo_qr}</div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1 shrink-0">
+                        <EstadoBadge estado={e.estado_asignacion} label={t(`estadoAsig.${e.estado_asignacion}`)} />
+                        {aptitud !== 'APTO' && (
+                          <FisicoBadge estado={e.estado_fisico} label={t(`estadoFis.${e.estado_fisico}`)} />
+                        )}
+                        {motivo === 'CONTRATO' && (
+                          <span className="badge bg-danger/15 text-red-600 dark:text-danger">
+                            <FileWarning size={11} /> {t('assign.contratoVencidoBadge')}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+
+                    {/* Por qué no se puede entregar y qué hacer en su lugar. */}
+                    {motivo === 'FISICO' && (
+                      <div className="px-3 pb-3 -mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-red-600 dark:text-danger">
+                        <span className="inline-flex items-center gap-1.5">
+                          <AlertTriangle size={13} className="shrink-0" />
+                          {t('assign.danadoInline', { estado: t(`estadoFis.${e.estado_fisico}`).toLowerCase() })}
+                        </span>
+                        {puedeReparar ? (
+                          <button type="button" onClick={() => setAReparar(e)}
+                            className="inline-flex items-center gap-1 font-medium text-amber-600 dark:text-warning hover:underline">
+                            <Wrench size={12} /> {t('assign.enviarMantenimiento')}
+                          </button>
+                        ) : (
+                          <span className="text-ink-400">{t('assign.danadoAvisaSoporte')}</span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* El contrato no se arregla en mantenimiento: hay que
+                        renovarlo o devolver el equipo al proveedor. */}
+                    {motivo === 'CONTRATO' && (
+                      <div className="px-3 pb-3 -mt-1 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-xs text-red-600 dark:text-danger">
+                        <span className="inline-flex items-center gap-1.5">
+                          <FileWarning size={13} className="shrink-0" />
+                          {t('assign.contratoVencidoInline', {
+                            fecha: fmtDate(e.fecha_vencimiento_contrato, i18n.language),
+                          })}
+                        </span>
+                        <span className="text-ink-400">
+                          {e.proveedor_propietario ? `${e.proveedor_propietario} · ` : ''}
+                          {t('assign.contratoVencidoAviso')}
+                        </span>
+                      </div>
+                    )}
+                  </div>
                 );
               })}
               {filtered.length === 0 && (
                 <EmptyState variant="search" icon={SearchX} title={t('common.noResultsTitle')} description={t('assign.noCandidates')} className="!py-8" />
               )}
             </div>
+
+            {bloqueadosVisibles > 0 && (
+              <p className="mt-2 text-xs text-ink-400">
+                {t('assign.bloqueadosResumen', { count: bloqueadosVisibles })}
+              </p>
+            )}
             {seleccionados.length > 0 && (
               <div className="mt-5 pt-5 border-t border-ink-100 dark:border-white/10 space-y-3">
                 <div className="text-sm font-semibold">{t('assign.selectedItems')}</div>
@@ -340,6 +453,43 @@ export function Asignar() {
                   </div>
                 ))}
               </div>
+            )}
+
+            {/* Falla conocida: se puede entregar, pero no sin querer. */}
+            {conFalla.length > 0 && (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                className="mt-4 p-4 rounded-2xl bg-warning/8 border border-warning/25">
+                <div className="flex items-start gap-2.5 text-sm text-amber-600 dark:text-warning">
+                  <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+                  <div className="min-w-0">
+                    <div className="font-semibold">{t('assign.conFallaTitulo', { count: conFalla.length })}</div>
+                    <div className="mt-1 space-y-0.5 text-xs">
+                      {conFalla.map((e) => (
+                        <div key={e.id} className="truncate">
+                          {e.marca} {e.linea_modelo} · <span className="font-mono">{fmtSerial(e.serial)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-xs text-ink-500 dark:text-ink-300 leading-relaxed">
+                      {t('assign.conFallaTexto')}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-3 pl-[26px]">
+                  <label className="flex items-center gap-2 text-xs font-medium cursor-pointer">
+                    <input type="checkbox" className="w-4 h-4 rounded accent-brand-500 cursor-pointer"
+                      checked={aceptaFalla} onChange={(ev) => setAceptaFalla(ev.target.checked)} />
+                    {t('assign.conFallaConfirmo')}
+                  </label>
+                  {puedeReparar && conFalla.length === 1 && (
+                    <button type="button" onClick={() => setAReparar(conFalla[0])}
+                      className="inline-flex items-center gap-1 text-xs font-medium text-amber-600 dark:text-warning hover:underline">
+                      <Wrench size={12} /> {t('assign.enviarMantenimiento')}
+                    </button>
+                  )}
+                </div>
+              </motion.div>
             )}
 
             {excedePortatiles && (
@@ -358,7 +508,7 @@ export function Asignar() {
 
             <div className="flex justify-between mt-6">
               <button className="btn-secondary" onClick={() => setStep(0)}><ArrowLeft size={16} /> {t('common.back')}</button>
-              <button className="btn-primary" disabled={!seleccionados.length || excedePortatiles} onClick={() => setStep(2)}>{t('common.next')} <ArrowRight size={16} /></button>
+              <button className="btn-primary" disabled={!seleccionados.length || excedePortatiles || faltaConfirmarFalla || bloqueadosElegidos.length > 0} onClick={() => setStep(2)}>{t('common.next')} <ArrowRight size={16} /></button>
             </div>
           </motion.div>
         )}
@@ -372,6 +522,9 @@ export function Asignar() {
               {seleccionados.map((e) => (
                 <div key={e.id} className="text-ink-500 text-xs flex items-center gap-1.5">
                   <Plus size={11} /> {e.marca} {e.linea_modelo} · <span className="font-mono">{fmtSerial(e.serial)}</span>
+                  {aptitudEntrega(e.estado_fisico) !== 'APTO' && (
+                    <span className="text-amber-600 dark:text-warning">· {t(`estadoFis.${e.estado_fisico}`)}</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -400,6 +553,18 @@ export function Asignar() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Enviar a mantenimiento sin salir de la entrega: el equipo sale de la
+          lista de disponibles y la selección se limpia sola. */}
+      <CambiarEstadoModal
+        equipo={aReparar}
+        onClose={() => setAReparar(null)}
+        onSaved={() => {
+          const id = aReparar?.id;
+          if (id) setSel((prev) => { const next = { ...prev }; delete next[id]; return next; });
+          refetch();
+        }}
+      />
     </div>
   );
 }

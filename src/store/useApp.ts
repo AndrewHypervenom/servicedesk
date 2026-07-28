@@ -15,6 +15,9 @@ interface AppState {
   loading: boolean;
   theme: Theme;
   idioma: string;
+  /** Menú lateral reducido a solo iconos (escritorio). Se recuerda entre visitas. */
+  navColapsado: boolean;
+  toggleNav: () => void;
   init: () => Promise<void>;
   updatePerfil: (patch: Partial<Perfil>) => Promise<void>;
   signIn: (email: string, pass: string) => Promise<void>;
@@ -65,6 +68,7 @@ export const useApp = create<AppState>((set, get) => ({
   loading: true,
   theme: (localStorage.getItem('theme') as Theme) || 'system',
   idioma: localStorage.getItem('idioma') || 'es',
+  navColapsado: localStorage.getItem('navColapsado') === '1',
 
   init: async () => {
     applyTheme(get().theme);
@@ -102,6 +106,12 @@ export const useApp = create<AppState>((set, get) => ({
   signOut: async () => {
     await supabase.auth.signOut();
     set({ perfil: null, misSedes: [], misPaises: [] });
+  },
+
+  toggleNav: () => {
+    const v = !get().navColapsado;
+    localStorage.setItem('navColapsado', v ? '1' : '0');
+    set({ navColapsado: v });
   },
 
   setTheme: (t) => { localStorage.setItem('theme', t); applyTheme(t); set({ theme: t }); },

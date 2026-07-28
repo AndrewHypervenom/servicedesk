@@ -92,6 +92,9 @@ export function EquipoDetalle() {
     if (equipo.fecha_vencimiento_contrato) {
       infoRows.push([t('equipo.fechaVencimiento'),
         <span>{fmtDate(equipo.fecha_vencimiento_contrato, i18n.language)}
+          {dias !== null && dias < 0 && (
+            <Badge className="!bg-danger/15 !text-red-600 dark:!text-danger ml-2">{t('equipo.contratoVencido')}</Badge>
+          )}
           {dias !== null && dias >= 0 && dias <= 30 && <Badge className="!bg-warning/15 !text-amber-600 dark:!text-warning ml-2">{dias}d</Badge>}
         </span>]);
     }

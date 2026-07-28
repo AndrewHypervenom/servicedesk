@@ -7,7 +7,8 @@ import { BotonBorrar } from '@/components/ui/BotonBorrar';
 import { listEquipos } from '@/lib/api';
 import { exportEquiposExcel } from '@/lib/excel';
 import { descargarQr } from '@/lib/qr';
-import { diasRestantes, fmtSerial } from '@/lib/format';
+import { fmtSerial } from '@/lib/format';
+import { contratoPorVencer, contratoVencido, diasDeContrato } from '@/lib/estados';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select } from '@/components/ui/Select';
 import { EstadoBadge, Badge } from '@/components/ui/Badge';
@@ -34,14 +35,16 @@ export function Inventario() {
   const [fEstado, setFEstado] = useState('');
   const [fTipo, setFTipo] = useState('');
   const [fProp, setFProp] = useState('');
+  // '' todos · 'VENCIDO' contrato terminado · 'POR_VENCER' termina en 30 días.
+  const [fContrato, setFContrato] = useState('');
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
   const [editing, setEditing] = useState<Equipo | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  const hayFiltros = !!(q.trim() || fEstado || fTipo || fProp);
-  const limpiarFiltros = () => { setQ(''); setFEstado(''); setFTipo(''); setFProp(''); };
+  const hayFiltros = !!(q.trim() || fEstado || fTipo || fProp || fContrato);
+  const limpiarFiltros = () => { setQ(''); setFEstado(''); setFTipo(''); setFProp(''); setFContrato(''); };
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
@@ -49,11 +52,17 @@ export function Inventario() {
       if (fEstado && e.estado_asignacion !== fEstado) return false;
       if (fTipo && e.tipo !== fTipo) return false;
       if (fProp && e.proveedor_propietario !== fProp) return false;
+      if (fContrato === 'VENCIDO' && !contratoVencido(e)) return false;
+      if (fContrato === 'POR_VENCER' && !contratoPorVencer(e)) return false;
       if (!s) return true;
       return [e.serial, e.marca, e.linea_modelo, e.codigo_qr, e.proyecto_asignado, e.descripcion_completa]
         .some((v) => v?.toLowerCase().includes(s));
     });
-  }, [equipos, q, fEstado, fTipo, fProp]);
+  }, [equipos, q, fEstado, fTipo, fProp, fContrato]);
+
+  // Se cuentan sobre el alcance del usuario, no sobre lo filtrado: el atajo
+  // tiene que seguir visible aunque los filtros actuales no muestren ninguno.
+  const vencidos = useMemo(() => equipos.filter(contratoVencido).length, [equipos]);
 
   const proveedores = Array.from(new Set(equipos.map((e) => e.proveedor_propietario).filter(Boolean))) as string[];
 
@@ -215,11 +224,36 @@ export function Inventario() {
                 ...proveedores.map((p) => ({ value: p, label: p })),
               ]}
             />
+            <Select
+              value={fContrato}
+              onChange={setFContrato}
+              className="!w-auto"
+              options={[
+                { value: '', label: `${t('inventory.contrato')}: ${t('common.all')}` },
+                { value: 'VENCIDO', label: t('inventory.contratoVencido'), description: t('inventory.contratoVencidoDesc') },
+                { value: 'POR_VENCER', label: t('inventory.contratoPorVencer'), description: t('inventory.contratoPorVencerDesc') },
+              ]}
+            />
             {hayFiltros && (
               <Button variant="ghost" icon={X} onClick={limpiarFiltros}>{t('common.clearFilters')}</Button>
             )}
           </div>
         </div>
+
+        {/* Los contratos vencidos hay que revisarlos: se avisa aunque el
+            usuario no venga buscándolos, con el filtro a un clic. */}
+        {vencidos > 0 && fContrato !== 'VENCIDO' && (
+          <button
+            type="button"
+            onClick={() => setFContrato('VENCIDO')}
+            className="mt-3 w-full flex items-center gap-2 p-3 rounded-xl text-left text-sm
+                       bg-danger/8 hover:bg-danger/15 text-red-600 dark:text-danger transition-colors"
+          >
+            <AlertTriangle size={16} className="shrink-0" />
+            <span className="flex-1">{t('inventory.vencidosAviso', { count: vencidos })}</span>
+            <span className="text-xs font-medium underline">{t('inventory.vencidosVer')}</span>
+          </button>
+        )}
       </div>
 
       <div className="hidden md:block">
@@ -265,9 +299,21 @@ export function Inventario() {
   );
 }
 
+// El contrato vencido se marca en rojo y sin caducidad: un equipo rentado que
+// ya no está cubierto no se puede entregar, así que hay que verlo en la lista
+// aunque venciera hace meses (antes solo se avisaba de los próximos 30 días).
 function VenceAlert({ e }: { e: Equipo }) {
-  const d = diasRestantes(e.fecha_vencimiento_contrato);
-  if (e.propiedad !== 'RENTADO' || d === null || d < 0 || d > 30) return null;
+  const { t } = useTranslation();
+  const d = diasDeContrato(e);
+  if (d === null) return null;
+  if (d < 0) {
+    return (
+      <span className="badge bg-danger/15 text-red-600 dark:text-danger ml-2">
+        <AlertTriangle size={11} /> {t('inventory.contratoVencido')}
+      </span>
+    );
+  }
+  if (d > 30) return null;
   return <span className="badge bg-warning/15 text-amber-600 dark:text-warning ml-2"><AlertTriangle size={11} /> {d}d</span>;
 }
 
