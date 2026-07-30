@@ -430,9 +430,9 @@ export function Colaboradores() {
             <AnimatePresence>
               {q && (
                 <motion.button
-                  initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
+                  initial={{ opacity: 0, scale: 0.8, y: '-50%' }} animate={{ opacity: 1, scale: 1, y: '-50%' }} exit={{ opacity: 0, scale: 0.8, y: '-50%' }}
                   onClick={() => { setQ(''); buscadorRef.current?.focus(); }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-ink-400 hover:bg-ink-100 dark:hover:bg-white/10"
+                  className="absolute right-3 top-1/2 p-1 rounded-full text-ink-400 hover:bg-ink-100 dark:hover:bg-white/10"
                   aria-label={t('common.clear')}
                 >
                   <X size={14} />

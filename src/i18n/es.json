@@ -878,7 +878,7 @@
     "signature": "Firma del colaborador",
     "declaration": "Declaro que recibo/entrego el equipo descrito en buen estado y me comprometo a su buen uso y custodia conforme a las políticas de la compañía.",
     "attach": "Adjuntar PDF externo",
-    "pendingSign": "Pendiente de firma",
+    "pendingSign": "Sin firma",
     "sign": "Firmar",
     "signTitle": "Firmar acta",
     "signHint": "Dibuje la firma del colaborador. Al guardar, el PDF del acta se regenerará con la firma incluida.",

@@ -1,15 +1,12 @@
-import { useMemo, useRef, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { FileSignature, ExternalLink, CheckCircle2, Mail, Printer, PenLine, FileCheck2, Eye, SearchX } from 'lucide-react';
-import { listActas, listEquipos, listColaboradores, updateActa, subirPdfActa } from '@/lib/api';
+import { FileSignature, ExternalLink, CheckCircle2, Mail, Printer, FileCheck2, Eye, SearchX } from 'lucide-react';
+import { listActas, listEquipos, listColaboradores } from '@/lib/api';
 import { generarActaPdf, abrirBlob, imprimirBlob, type ActaItem } from '@/lib/pdf';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { Badge } from '@/components/ui/Badge';
-import { Modal } from '@/components/ui/Modal';
-import { SignaturePad, type SignatureHandle } from '@/components/ui/SignaturePad';
-import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Tooltip } from '@/components/ui/Tooltip';
 import { SkeletonRows } from '@/components/ui/Skeleton';
@@ -21,14 +18,11 @@ import type { Acta } from '@/types';
 export function Actas() {
   const { t, i18n } = useTranslation();
   const { perfil } = useApp();
-  const { data: actas = [], refetch, isLoading } = useQuery({ queryKey: ['actas'], queryFn: listActas });
+  const { data: actas = [], isLoading } = useQuery({ queryKey: ['actas'], queryFn: listActas });
   const { data: equipos = [] } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
   const { data: colaboradores = [] } = useQuery({ queryKey: ['colaboradores'], queryFn: listColaboradores });
 
-  const [firmando, setFirmando] = useState<Acta | null>(null);
   const [q, setQ] = useState('');
-  const [busy, setBusy] = useState(false);
-  const sigRef = useRef<SignatureHandle>(null);
 
   const equiposById = useMemo(() => new Map(equipos.map((e) => [e.id, e])), [equipos]);
   const colabByCedula = useMemo(() => new Map(colaboradores.map((c) => [c.cedula, c])), [colaboradores]);
@@ -92,24 +86,6 @@ export function Actas() {
     catch (e: any) { toast.error(e.message ?? t('common.error')); }
   };
 
-  const guardarFirma = async () => {
-    if (!firmando) return;
-    const firma = sigRef.current?.toDataURL();
-    if (!firma) { toast.error(t('common.signHere')); return; }
-    setBusy(true);
-    try {
-      await updateActa(firmando.id, { firma_data: firma, firmado: true });
-      const actualizada = { ...firmando, firma_data: firma, firmado: true };
-      const blob = await generarPdf(actualizada);
-      await subirPdfActa(firmando.id, blob);
-      abrirBlob(blob);
-      toast.success(t('acta.signDone'));
-      setFirmando(null);
-      refetch();
-    } catch (e: any) { toast.error(e.message ?? t('common.error')); }
-    finally { setBusy(false); }
-  };
-
   return (
     <div>
       <PageHeader title={t('acta.title')} subtitle={t('acta.subtitle')} icon={FileSignature} />
@@ -151,7 +127,7 @@ export function Actas() {
                     <div className="flex flex-wrap gap-1.5">
                       {a.firmado
                         ? <span className="badge bg-success/15 text-emerald-700 dark:text-success"><CheckCircle2 size={11} /> {t('acta.signed')}</span>
-                        : <span className="badge bg-warning/15 text-amber-600 dark:text-warning">{t('acta.pendingSign')}</span>}
+                        : <span className="badge bg-ink-500/10 text-ink-500">{t('acta.pendingSign')}</span>}
                       {a.correo_enviado && <span className="badge bg-brand-500/15 text-brand-600"><Mail size={11} /> {t('acta.emailSent')}</span>}
                       {a.archivo_firmado_url && <span className="badge bg-brand-500/15 text-brand-600"><FileCheck2 size={11} /> {t('acta.signedFile')}</span>}
                     </div>
@@ -168,13 +144,6 @@ export function Actas() {
                       <Tooltip label={t('acta.tipPrint')} hint={t('acta.tipPrintHint')}>
                         <button className="btn-ghost !p-2" aria-label={t('acta.tipPrint')} onClick={() => imprimir(a)}><Printer size={16} /></button>
                       </Tooltip>
-                      {!a.firmado && (
-                        <Tooltip label={t('acta.sign')} hint={t('acta.tipSignHint')}>
-                          <button className="btn-ghost !p-2 text-brand-600" aria-label={t('acta.sign')} onClick={() => setFirmando(a)}>
-                            <PenLine size={16} />
-                          </button>
-                        </Tooltip>
-                      )}
                       {a.archivo_firmado_url && (
                         <Tooltip label={t('acta.signedFile')} hint={t('acta.tipSignedFileHint')}>
                           <a href={a.archivo_firmado_url} target="_blank" rel="noreferrer" aria-label={t('acta.signedFile')} className="btn-ghost !p-2 text-emerald-600">
@@ -199,16 +168,6 @@ export function Actas() {
         </div>
       )}
 
-      <Modal open={!!firmando} onClose={() => !busy && setFirmando(null)} title={t('acta.signTitle')} subtitle={firmando?.consecutivo ?? ''}>
-        <p className="text-sm text-ink-400 mb-4">{t('acta.signHint')}</p>
-        <SignaturePad ref={sigRef} />
-        <div className="flex justify-end gap-2 mt-5">
-          <Button disabled={busy} onClick={() => setFirmando(null)}>{t('common.cancel')}</Button>
-          <Button variant="primary" loading={busy} icon={FileSignature} onClick={guardarFirma}>
-            {busy ? t('common.saving') : t('acta.sign')}
-          </Button>
-        </div>
-      </Modal>
     </div>
   );
 }

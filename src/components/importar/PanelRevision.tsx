@@ -378,7 +378,13 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
                           value={valor}
                           onChange={(e) => setCedula(p.nombre, e.target.value)}
                         />
-                        {ok && <CheckPop className="absolute right-3 top-1/2 -translate-y-1/2" />}
+                        {/* El wrapper conserva el centrado: CheckPop anima
+                            `transform` y borraría el -translate-y-1/2. */}
+                        {ok && (
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2">
+                            <CheckPop />
+                          </span>
+                        )}
                       </div>
                       {conError && (
                         <motion.p

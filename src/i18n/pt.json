@@ -878,7 +878,7 @@
     "signature": "Assinatura do colaborador",
     "declaration": "Declaro que recebo/entrego o equipamento descrito em bom estado e me comprometo com seu bom uso e guarda conforme as políticas da empresa.",
     "attach": "Anexar PDF externo",
-    "pendingSign": "Pendente de assinatura",
+    "pendingSign": "Sem assinatura",
     "sign": "Assinar",
     "signTitle": "Assinar termo",
     "signHint": "Desenhe a assinatura do colaborador. Ao salvar, o PDF do termo será regenerado com a assinatura incluída.",

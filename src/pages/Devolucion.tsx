@@ -180,6 +180,8 @@ export function Devolucion() {
     const modo = firmaRef.current?.getMode() ?? 'digital';
     const firma = modo === 'digital' ? firmaRef.current?.toDataURL() : null;
     const archivoFirmado = modo === 'manual' ? firmaRef.current?.getArchivo() : null;
+    // El acta no puede salir sin firma: una vez emitida ya no se firma después.
+    if (modo === 'digital' && !firma) { toast.error(t('common.signHere')); return; }
     if (modo === 'manual' && !archivoFirmado) { toast.error(t('acta.faltaArchivo')); return; }
     setBusy(true);
     try {
@@ -201,7 +203,7 @@ export function Devolucion() {
         documento = archivoFirmado;
         nombreDoc = archivoFirmado.name;
       } else {
-        await updateActa(acta.id, { firma_data: firma, firmado: !!firma });
+        await updateActa(acta.id, { firma_data: firma, firmado: true });
         documento = await generarActaPdf({
           tipo: 'DEVOLUCION', consecutivo: acta.consecutivo || 'ACTA', items: buildItems(vigentes),
           colaborador: colab, firmaDataUrl: firma, tecnico: perfil?.nombre,
