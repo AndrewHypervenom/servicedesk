@@ -76,21 +76,34 @@ export function Devolucion() {
   const candidatos = equipos.filter((e) => esDevolvible(e) &&
     (!q || [fmtSerial(e.serial), e.marca, e.linea_modelo, e.codigo_qr, e.tipo].some((v) => v?.toLowerCase().includes(q.toLowerCase()))));
 
-  // Un acta de devolución a bodega la firma UNA persona y lleva UNA cédula: si
-  // se mezclaran equipos de varios colaboradores, el papel saldría a nombre del
-  // primero y los demás quedarían sin descargo. Por eso el flujo se ancla al
-  // dueño del primer equipo elegido y el resto queda bloqueado. Los equipos en
-  // mantenimiento sin cédula forman su propio grupo (null), devolubles entre sí.
-  // El acta al proveedor no lleva colaborador, así que ahí no se agrupa.
-  const agrupaPorDueno = destino === 'bodega';
-  const cedulaFlujo = agrupaPorDueno && seleccionados.length ? seleccionados[0].cedula_asignado ?? null : undefined;
-  const mismoDueno = (e: Equipo) => cedulaFlujo === undefined || (e.cedula_asignado ?? null) === cedulaFlujo;
-  const nombraDueno = (cedula: string | null | undefined) =>
-    cedula ? `C.C. ${cedula}` : t('return.sinColaborador');
+  // Un acta de devolución tiene UNA contraparte: a bodega es el colaborador que
+  // entrega, al proveedor es el dueño del equipo. Si se mezclaran, el papel
+  // saldría a nombre del primero y el resto quedaría sin descargo —o peor, un
+  // equipo se le devolvería al proveedor equivocado—. Por eso el flujo se ancla
+  // a la contraparte del primer equipo elegido y el resto queda bloqueado. Los
+  // equipos sin cédula (o sin proveedor registrado) forman su propio grupo
+  // (null), devolubles entre sí.
+  const llevaColaborador = destino === 'bodega';
+  const claveGrupo = (e: Equipo) => (llevaColaborador ? e.cedula_asignado : e.proveedor_propietario) ?? null;
+  const grupoFlujo = seleccionados.length ? claveGrupo(seleccionados[0]) : undefined;
+  const mismoGrupo = (e: Equipo) => grupoFlujo === undefined || claveGrupo(e) === grupoFlujo;
+  const nombraGrupo = (clave: string | null | undefined) =>
+    clave ? (llevaColaborador ? `C.C. ${clave}` : clave)
+      : t(llevaColaborador ? 'return.sinColaborador' : 'return.sinProveedor');
+
+  // El proveedor del acta no se elige a mano cuando el equipo ya dice de quién
+  // es: se toma del grupo y el selector queda solo para los que no lo tienen.
+  useEffect(() => {
+    if (destino !== 'proveedor') return;
+    // Al cambiar de grupo (o quedarse sin selección) no puede sobrevivir el
+    // proveedor del grupo anterior: sería devolverle equipos que no son suyos.
+    setProveedor(typeof grupoFlujo === 'string' ? grupoFlujo : '');
+  }, [destino, grupoFlujo]);
 
   const toggleEquipo = (e: Equipo) => {
-    if (!sel[e.id] && !mismoDueno(e)) {
-      toast.error(t('return.otroDueno', { quien: nombraDueno(e.cedula_asignado), actual: nombraDueno(cedulaFlujo) }));
+    if (!sel[e.id] && !mismoGrupo(e)) {
+      toast.error(t(llevaColaborador ? 'return.otroDueno' : 'return.otroProveedor',
+        { quien: nombraGrupo(claveGrupo(e)), actual: nombraGrupo(grupoFlujo) }));
       return;
     }
     setSel((prev) => {
@@ -136,8 +149,9 @@ export function Devolucion() {
     for (const e of seleccionados) {
       const actual = porId.get(e.id);
       if (!actual || !esDevolvible(actual)) { cambio = true; continue; }
-      // El dueño solo importa cuando el acta va a nombre de un colaborador.
-      if (agrupaPorDueno && (actual.cedula_asignado ?? null) !== (e.cedula_asignado ?? null)) { cambio = true; continue; }
+      // Si le cambiaron la contraparte (otro colaborador, otro proveedor
+      // propietario) el acta ya no la cubre: fuera de la selección.
+      if (claveGrupo(actual) !== claveGrupo(e)) { cambio = true; continue; }
       vigentes.push(actual);
     }
     setSel(Object.fromEntries(vigentes.map((e) => [e.id, e])));
@@ -152,7 +166,7 @@ export function Devolucion() {
       const colab = await colaboradorDelActa(seleccionados[0]);
       const blob = await generarActaPdf({
         tipo: 'DEVOLUCION', consecutivo: t('acta.previewWatermark'), items: buildItems(),
-        colaborador: colab, firmaDataUrl: agrupaPorDueno ? firmaRef.current?.toDataURL() : null,
+        colaborador: colab, firmaDataUrl: llevaColaborador ? firmaRef.current?.toDataURL() : null,
         tecnico: perfil?.nombre,
         tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: firmaTecnico(), novedades,
       });
@@ -166,15 +180,18 @@ export function Devolucion() {
    * queda impreso en el papel que firma el colaborador.
    */
   const asegurarActa = async (items: Equipo[] = seleccionados): Promise<Acta> => {
-    // Cinturón y tirantes: la lista ya impide mezclar dueños, pero un acta con
-    // dos cédulas es un documento inválido y no puede salir de aquí.
-    if (items.some((e) => !mismoDueno(e))) throw new Error(t('return.mezclaDuenos'));
+    // Cinturón y tirantes: la lista ya impide mezclar contrapartes, pero un acta
+    // con dos cédulas —o dos proveedores— es un documento inválido y no puede
+    // salir de aquí.
+    if (items.some((e) => !mismoGrupo(e))) {
+      throw new Error(t(llevaColaborador ? 'return.mezclaDuenos' : 'return.mezclaProveedores'));
+    }
     const datos = {
       tipo: 'DEVOLUCION' as const, equipo_id: items[0].id,
       items: items.map((e) => ({ equipo_id: e.id, observaciones: obs[e.id] })),
       // El acta al proveedor no va a nombre de nadie aunque el equipo esté
       // asignado: quien responde por la salida es el técnico.
-      cedula_colaborador: agrupaPorDueno ? items[0].cedula_asignado : null,
+      cedula_colaborador: llevaColaborador ? items[0].cedula_asignado : null,
       observaciones: novedades,
     };
     const previo = borradorRef.current;
@@ -192,7 +209,7 @@ export function Devolucion() {
 
   /** Colaborador que encabeza el acta, o null si esta devolución no lleva uno. */
   const colaboradorDelActa = async (primero: Equipo) =>
-    agrupaPorDueno && primero.cedula_asignado ? await getColaborador(primero.cedula_asignado) : null;
+    llevaColaborador && primero.cedula_asignado ? await getColaborador(primero.cedula_asignado) : null;
 
   /** Suelta el acta reservada si el técnico abandona el flujo sin finalizar. */
   const descartarBorrador = () => {
@@ -228,12 +245,12 @@ export function Devolucion() {
     // A bodega firma el colaborador (digital o física); al proveedor no hay
     // colaborador y responde el técnico que registra la salida.
     const firmaTec = firmaTecnico();
-    const modo = agrupaPorDueno ? firmaRef.current?.getMode() ?? 'digital' : 'digital';
-    const firma = agrupaPorDueno && modo === 'digital' ? firmaRef.current?.toDataURL() ?? null : null;
-    const archivoFirmado = agrupaPorDueno && modo === 'manual' ? firmaRef.current?.getArchivo() ?? null : null;
-    if (!agrupaPorDueno && !firmaTec) { toast.error(t('return.faltaFirmaTecnico')); return; }
-    if (agrupaPorDueno && modo === 'digital' && !firma) { toast.error(t('common.signHere')); return; }
-    if (agrupaPorDueno && modo === 'manual' && !archivoFirmado) { toast.error(t('acta.faltaArchivo')); return; }
+    const modo = llevaColaborador ? firmaRef.current?.getMode() ?? 'digital' : 'digital';
+    const firma = llevaColaborador && modo === 'digital' ? firmaRef.current?.toDataURL() ?? null : null;
+    const archivoFirmado = llevaColaborador && modo === 'manual' ? firmaRef.current?.getArchivo() ?? null : null;
+    if (!llevaColaborador && !firmaTec) { toast.error(t('return.faltaFirmaTecnico')); return; }
+    if (llevaColaborador && modo === 'digital' && !firma) { toast.error(t('common.signHere')); return; }
+    if (llevaColaborador && modo === 'manual' && !archivoFirmado) { toast.error(t('acta.faltaArchivo')); return; }
     setBusy(true);
     try {
       // Último contraste con la base antes de emitir el documento.
@@ -338,10 +355,10 @@ export function Devolucion() {
               <span className="badge bg-brand-500/15 text-brand-600">{t('assign.selectedCount', { n: seleccionados.length })}</span>
             )}
           </div>
-          {/* A quién le queda esta acta: evita descubrirlo al ver el PDF. */}
-          {agrupaPorDueno && seleccionados.length > 0 && (
+          {/* A nombre de quién queda esta acta: evita descubrirlo al ver el PDF. */}
+          {seleccionados.length > 0 && (
             <div className="text-xs text-ink-500 dark:text-ink-300">
-              {t('return.duenoActual', { quien: nombraDueno(cedulaFlujo) })}
+              {t(llevaColaborador ? 'return.duenoActual' : 'return.proveedorActual', { quien: nombraGrupo(grupoFlujo) })}
             </div>
           )}
           <div className="relative my-3">
@@ -353,7 +370,7 @@ export function Devolucion() {
               const on = !!sel[e.id];
               // Se deja clicable a propósito: el clic explica por qué no entra
               // en esta acta, que es más útil que un botón muerto.
-              const ajeno = !mismoDueno(e);
+              const ajeno = !mismoGrupo(e);
               return (
                 <button key={e.id} onClick={() => toggleEquipo(e)}
                   className={`w-full text-left p-3 rounded-xl border transition-all flex items-center gap-3 ${
@@ -365,7 +382,13 @@ export function Devolucion() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{e.marca} {e.linea_modelo} <span className="text-xs text-ink-400">· {e.tipo}</span></div>
-                    <div className="text-xs text-ink-400 font-mono">{fmtSerial(e.serial)} {e.cedula_asignado && `· C.C. ${e.cedula_asignado}`}</div>
+                    <div className="text-xs text-ink-400 font-mono">
+                      {fmtSerial(e.serial)}
+                      {/* De quién es el equipo: es lo que decide en qué acta entra. */}
+                      {destino === 'proveedor'
+                        ? ` · ${nombraGrupo(e.proveedor_propietario)}`
+                        : e.cedula_asignado && ` · C.C. ${e.cedula_asignado}`}
+                    </div>
                     {/* Por qué este equipo sale al proveedor: el estado de su contrato. */}
                     {destino === 'proveedor' && (
                       <div className={`text-xs mt-0.5 flex items-center gap-1 ${
@@ -378,7 +401,9 @@ export function Devolucion() {
                     )}
                   </div>
                   {ajeno
-                    ? <span className="badge bg-ink-500/10 text-ink-500 shrink-0">{t('return.otroDuenoCorto')}</span>
+                    ? <span className="badge bg-ink-500/10 text-ink-500 shrink-0">
+                        {t(llevaColaborador ? 'return.otroDuenoCorto' : 'return.otroProveedorCorto')}
+                      </span>
                     : <EstadoBadge estado={e.estado_asignacion} label={t(`estadoAsig.${e.estado_asignacion}`)} />}
                 </button>
               );
@@ -406,11 +431,25 @@ export function Devolucion() {
               ))}
             </div>
 
+            {/* El proveedor sale del equipo, no de una lista: elegir otro sería
+                devolvérselo a quien no es. Solo se pregunta cuando los equipos
+                elegidos no tienen proveedor propietario registrado. */}
             {destino === 'proveedor' && (
               <div>
                 <label className="label">{t('return.selectSupplier')}</label>
-                <Select value={proveedor} onChange={setProveedor}
-                  options={[{ value: '', label: '—' }, ...proveedores.map((p) => ({ value: p.nombre, label: p.nombre }))]} />
+                {typeof grupoFlujo === 'string' ? (
+                  <div className="flex items-center gap-2.5 p-3 rounded-xl border border-ink-100 dark:border-white/10 bg-ink-50 dark:bg-white/5">
+                    <Truck size={16} className="text-brand-500 shrink-0" />
+                    <span className="text-sm font-medium flex-1 truncate">{grupoFlujo}</span>
+                    <span className="text-xs text-ink-400">{t('return.proveedorDelEquipo')}</span>
+                  </div>
+                ) : (
+                  <>
+                    <Select value={proveedor} onChange={setProveedor}
+                      options={[{ value: '', label: '—' }, ...proveedores.map((p) => ({ value: p.nombre, label: p.nombre }))]} />
+                    <p className="text-xs text-ink-400 mt-1">{t('return.proveedorSinRegistrar')}</p>
+                  </>
+                )}
               </div>
             )}
 

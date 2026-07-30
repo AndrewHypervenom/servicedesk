@@ -446,6 +446,13 @@
     "duenoActual": "Devolviendo equipos de {{quien}}",
     "otroDueno": "Este equipo es de {{quien}} y esta devolución es de {{actual}}. Cada colaborador firma su propia acta: registre una devolución aparte.",
     "otroDuenoCorto": "Otro colaborador",
+    "sinProveedor": "sin proveedor registrado",
+    "proveedorActual": "Devolviendo equipos de {{quien}}",
+    "otroProveedor": "Este equipo es de {{quien}} y esta devolución es para {{actual}}. Cada proveedor recibe su propia acta: registre una devolución aparte.",
+    "otroProveedorCorto": "Otro proveedor",
+    "proveedorDelEquipo": "Proveedor del equipo",
+    "proveedorSinRegistrar": "Estos equipos no tienen proveedor propietario registrado: indique a quién se devuelven.",
+    "mezclaProveedores": "No se puede generar un acta con equipos de distintos proveedores.",
     "mezclaDuenos": "No se puede generar un acta con equipos de distintos colaboradores.",
     "seleccionDesactualizada": "Algunos equipos cambiaron de estado o de responsable mientras llenaba el formulario y se quitaron de la selección. Revise la lista y vuelva a generar el acta."
   },

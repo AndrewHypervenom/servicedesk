@@ -446,6 +446,13 @@
     "duenoActual": "Devolvendo equipamentos de {{quien}}",
     "otroDueno": "Este equipamento é de {{quien}} e esta devolução é de {{actual}}. Cada colaborador assina o seu próprio termo: registre uma devolução separada.",
     "otroDuenoCorto": "Outro colaborador",
+    "sinProveedor": "sem fornecedor registrado",
+    "proveedorActual": "Devolvendo equipamentos de {{quien}}",
+    "otroProveedor": "Este equipamento é de {{quien}} e esta devolução é para {{actual}}. Cada fornecedor recebe o seu próprio termo: registre uma devolução separada.",
+    "otroProveedorCorto": "Outro fornecedor",
+    "proveedorDelEquipo": "Fornecedor do equipamento",
+    "proveedorSinRegistrar": "Estes equipamentos não têm fornecedor proprietário registrado: indique para quem são devolvidos.",
+    "mezclaProveedores": "Não é possível gerar um termo com equipamentos de fornecedores diferentes.",
     "mezclaDuenos": "Não é possível gerar um termo com equipamentos de colaboradores diferentes.",
     "seleccionDesactualizada": "Alguns equipamentos mudaram de estado ou de responsável enquanto o formulário era preenchido e foram removidos da seleção. Revise a lista e gere o termo novamente."
   },
