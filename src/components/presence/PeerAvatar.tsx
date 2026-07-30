@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { initials } from '@/lib/format';
 import { descripcionPeer } from '@/lib/presence/vistas';
 import type { Peer } from '@/lib/presence/tipos';
@@ -27,8 +28,9 @@ export function PeerAvatar({ peer, size = 'md', ring = true, dot = true, title }
   dot?: boolean;
   title?: string;
 }) {
+  const { t } = useTranslation();
   const { label, editando } = descripcionPeer(peer);
-  const tooltip = title ?? `${peer.nombre} · ${peer.rol}\n${label}`;
+  const tooltip = title ?? `${peer.nombre} · ${t(`rol.${peer.rol}`)}\n${label}`;
 
   return (
     <div className="relative shrink-0" title={tooltip}>

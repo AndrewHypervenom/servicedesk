@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import { useTranslation } from 'react-i18next';
 import { ChevronUp, Users } from 'lucide-react';
 import { usePeersEnMiVista } from '@/lib/presence/hooks';
 import { vistaDeRuta, descripcionPeer } from '@/lib/presence/vistas';
@@ -14,6 +15,7 @@ import { PeerAvatar } from './PeerAvatar';
  * sola cuando dejas de coincidir con alguien.
  */
 export function SameViewAlert() {
+  const { t } = useTranslation();
   const peers = usePeersEnMiVista();
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -60,8 +62,8 @@ export function SameViewAlert() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-1.5">
                         <span className="text-sm font-medium truncate">{p.nombre}</span>
-                        <span className="ml-auto shrink-0 rounded-md bg-ink-100 dark:bg-white/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-300">
-                          {p.rol}
+                        <span className="ml-auto shrink-0 rounded-md bg-ink-100 dark:bg-white/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-ink-500 dark:text-ink-300">
+                          {t(`rol.${p.rol}`)}
                         </span>
                       </div>
                       <div className={`text-[11px] truncate ${editando ? 'text-amber-600 dark:text-amber-400' : 'text-ink-400'}`}>

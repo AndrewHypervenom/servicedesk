@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronRight, Radio } from 'lucide-react';
 import { usePeersEnLinea } from '@/lib/presence/hooks';
@@ -116,6 +117,7 @@ function FilaPeer({ peer, soyYo, onIr }: {
   soyYo: boolean;
   onIr: (destino: string) => void;
 }) {
+  const { t } = useTranslation();
   const { label, Icon, editando } = descripcionPeer(peer);
   // Puedo "ir" si no soy yo y tiene una vista visible para mí (la del ADMIN
   // llega saneada a ruta null para roles inferiores, así que no habrá botón).
@@ -129,8 +131,8 @@ function FilaPeer({ peer, soyYo, onIr }: {
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-medium truncate">{peer.nombre}</span>
           {soyYo && <span className="text-[10px] font-semibold text-brand-600 dark:text-brand-400">Tú</span>}
-          <span className="ml-auto shrink-0 rounded-md bg-ink-100 dark:bg-white/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-ink-500 dark:text-ink-300">
-            {peer.rol}
+          <span className="ml-auto shrink-0 rounded-md bg-ink-100 dark:bg-white/10 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-ink-500 dark:text-ink-300">
+            {t(`rol.${peer.rol}`)}
           </span>
         </div>
         <div className={`mt-0.5 flex items-center gap-1 text-[11px] truncate ${
