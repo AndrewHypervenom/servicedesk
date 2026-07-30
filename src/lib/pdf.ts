@@ -143,7 +143,7 @@ export async function generarActaPdf(p: ActaParams): Promise<Blob> {
       [tpl.campos.cedula, c?.cedula ?? ''],
       [tpl.campos.correo, c?.correo ?? ''],
       [tpl.campos.cargo, c?.cargo ?? ''],
-      [tpl.campos.cr, c?.proyecto ?? items[0]?.equipo.proyecto_asignado ?? ''],
+      [tpl.campos.cr, c?.centro_costos ?? items[0]?.equipo.proyecto_asignado ?? ''],
       [tpl.campos.lider, c?.lider ?? ''],
       [tpl.campos.fecha, fechaLegible],
     ],
