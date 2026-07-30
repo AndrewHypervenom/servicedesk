@@ -2,15 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Undo2, Search, Warehouse, Truck, FileSignature, Eye, Check, X, Plus, PackageX } from 'lucide-react';
+import { Undo2, Search, Warehouse, Truck, FileSignature, Eye, Check, X, Plus, PackageX, ChevronRight, ArrowLeft, FileWarning } from 'lucide-react';
 import { listEquipos, listProveedores, getColaborador, devolverEquipo, createActa, updateActa, deleteActa, subirPdfActa, subirActaFirmada } from '@/lib/api';
 import { generarActaPdf, abrirBlob, type ActaItem } from '@/lib/pdf';
 import { ACTA_DEVOLUCION } from '@/lib/actaTemplates';
-import { fmtSerial } from '@/lib/format';
+import { contratoPorVencer, contratoVencido, diasDeContrato, tieneContrato } from '@/lib/estados';
+import { fmtDate, fmtSerial } from '@/lib/format';
 import { useTrabajoEnCurso } from '@/lib/actualizacion';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { FirmaActa, type FirmaActaHandle } from '@/components/ui/FirmaActa';
+import { SignaturePad, type SignatureHandle } from '@/components/ui/SignaturePad';
 import { Select } from '@/components/ui/Select';
 import { EstadoBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -20,8 +22,11 @@ import { usePeersDeRecursos } from '@/lib/presence/hooks';
 import { PresenceMarker, CoeditBanner } from '@/components/presence';
 import type { Acta, Equipo } from '@/types';
 
+/** Destino de la devolución: define qué equipos son devolubles y quién firma. */
+type Destino = 'bodega' | 'proveedor';
+
 export function Devolucion() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { perfil } = useApp();
   const { data: equipos = [], refetch } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
   const { data: proveedores = [] } = useQuery({ queryKey: ['proveedores'], queryFn: listProveedores });
@@ -29,11 +34,14 @@ export function Devolucion() {
   const [q, setQ] = useState('');
   const [sel, setSel] = useState<Record<string, Equipo>>({});
   const [obs, setObs] = useState<Record<string, string>>({});
-  const [destino, setDestino] = useState<'bodega' | 'proveedor'>('bodega');
+  // Sin destino elegido todavía: la pantalla arranca preguntándolo, porque de
+  // él depende qué equipos se pueden devolver y quién firma el acta.
+  const [destino, setDestino] = useState<Destino | null>(null);
   const [proveedor, setProveedor] = useState('');
   const [novedades, setNovedades] = useState('');
   const [busy, setBusy] = useState(false);
   const firmaRef = useRef<FirmaActaHandle>(null);
+  const firmaTecnicoRef = useRef<SignatureHandle>(null);
   // Acta reservada: se crea al descargarla para firmar a mano, para que el
   // papel salga con su consecutivo definitivo y no con un marcador.
   const borradorRef = useRef<Acta | null>(null);
@@ -47,18 +55,35 @@ export function Devolucion() {
   // marcador por ítem) y reúno a los coeditores de cualquiera de ellos.
   const coeditores = usePeersDeRecursos('equipo', seleccionados.map((e) => e.id));
 
-  // Solo se devuelve lo que está en manos de alguien: un equipo DISPONIBLE ya
-  // está en bodega y no hay nada que devolver.
-  const candidatos = equipos.filter((e) =>
-    ['ASIGNADO', 'EN_MANTENIMIENTO'].includes(e.estado_asignacion) &&
+  /**
+   * A bodega solo se devuelve lo que está en manos de alguien: un equipo
+   * DISPONIBLE ya está en bodega y no hay nada que devolver.
+   */
+  const devolvibleABodega = (e: Equipo) => ['ASIGNADO', 'EN_MANTENIMIENTO'].includes(e.estado_asignacion);
+
+  /**
+   * Al proveedor vuelve lo que no es nuestro y ya no podemos seguir usando: una
+   * renta o comodato con el contrato vencido o a punto de vencer. Cuenta la
+   * ubicación actual —bodega, colaborador o mantenimiento— porque ese equipo hay
+   * que sacarlo de donde esté; lo dado de baja no sale por aquí.
+   */
+  const devolvibleAProveedor = (e: Equipo) =>
+    tieneContrato(e) && (contratoVencido(e) || contratoPorVencer(e)) &&
+    ['DISPONIBLE', 'ASIGNADO', 'EN_MANTENIMIENTO'].includes(e.estado_asignacion);
+
+  const esDevolvible = (e: Equipo) => (destino === 'proveedor' ? devolvibleAProveedor(e) : devolvibleABodega(e));
+
+  const candidatos = equipos.filter((e) => esDevolvible(e) &&
     (!q || [fmtSerial(e.serial), e.marca, e.linea_modelo, e.codigo_qr, e.tipo].some((v) => v?.toLowerCase().includes(q.toLowerCase()))));
 
-  // Un acta de devolución la firma UNA persona y lleva UNA cédula: si se
-  // mezclaran equipos de varios colaboradores, el papel saldría a nombre del
+  // Un acta de devolución a bodega la firma UNA persona y lleva UNA cédula: si
+  // se mezclaran equipos de varios colaboradores, el papel saldría a nombre del
   // primero y los demás quedarían sin descargo. Por eso el flujo se ancla al
   // dueño del primer equipo elegido y el resto queda bloqueado. Los equipos en
   // mantenimiento sin cédula forman su propio grupo (null), devolubles entre sí.
-  const cedulaFlujo = seleccionados.length ? seleccionados[0].cedula_asignado ?? null : undefined;
+  // El acta al proveedor no lleva colaborador, así que ahí no se agrupa.
+  const agrupaPorDueno = destino === 'bodega';
+  const cedulaFlujo = agrupaPorDueno && seleccionados.length ? seleccionados[0].cedula_asignado ?? null : undefined;
   const mismoDueno = (e: Equipo) => cedulaFlujo === undefined || (e.cedula_asignado ?? null) === cedulaFlujo;
   const nombraDueno = (cedula: string | null | undefined) =>
     cedula ? `C.C. ${cedula}` : t('return.sinColaborador');
@@ -79,6 +104,20 @@ export function Devolucion() {
     items.map((e) => ({ equipo: e, observaciones: obs[e.id] }));
 
   /**
+   * Firma que respalda el acta como técnico: la registrada en el perfil o, si no
+   * hay, la que dibuje en el momento. En la devolución al proveedor es la única
+   * firma del documento (no hay colaborador que descargue nada).
+   */
+  const firmaTecnico = (): string | null => perfil?.firma_data || firmaTecnicoRef.current?.toDataURL() || null;
+
+  /** Cambiar de destino cambia la lista y el acta: se empieza de cero. */
+  const elegirDestino = (d: Destino | null) => {
+    descartarBorrador();
+    setDestino(d);
+    setSel({}); setObs({}); setQ(''); setProveedor('');
+  };
+
+  /**
    * Lo seleccionado son fotos del momento en que se marcó cada equipo: otro
    * técnico pudo reasignarlo o devolverlo mientras se llenaba el formulario.
    * Antes de firmar se contrasta con la base. Si algo cambió, se quita de la
@@ -96,8 +135,9 @@ export function Devolucion() {
     let cambio = false;
     for (const e of seleccionados) {
       const actual = porId.get(e.id);
-      const devolvible = actual && ['ASIGNADO', 'EN_MANTENIMIENTO'].includes(actual.estado_asignacion);
-      if (!devolvible || (actual.cedula_asignado ?? null) !== (e.cedula_asignado ?? null)) { cambio = true; continue; }
+      if (!actual || !esDevolvible(actual)) { cambio = true; continue; }
+      // El dueño solo importa cuando el acta va a nombre de un colaborador.
+      if (agrupaPorDueno && (actual.cedula_asignado ?? null) !== (e.cedula_asignado ?? null)) { cambio = true; continue; }
       vigentes.push(actual);
     }
     setSel(Object.fromEntries(vigentes.map((e) => [e.id, e])));
@@ -109,12 +149,12 @@ export function Devolucion() {
   const vistaPrevia = async () => {
     if (!seleccionados.length) { toast.error(t('assign.noneSelected')); return; }
     try {
-      const primero = seleccionados[0];
-      const colab = primero.cedula_asignado ? await getColaborador(primero.cedula_asignado) : null;
+      const colab = await colaboradorDelActa(seleccionados[0]);
       const blob = await generarActaPdf({
         tipo: 'DEVOLUCION', consecutivo: t('acta.previewWatermark'), items: buildItems(),
-        colaborador: colab, firmaDataUrl: firmaRef.current?.toDataURL(), tecnico: perfil?.nombre,
-        tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: perfil?.firma_data, novedades,
+        colaborador: colab, firmaDataUrl: agrupaPorDueno ? firmaRef.current?.toDataURL() : null,
+        tecnico: perfil?.nombre,
+        tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: firmaTecnico(), novedades,
       });
       abrirBlob(blob, 'vista-previa-acta.pdf');
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
@@ -132,7 +172,10 @@ export function Devolucion() {
     const datos = {
       tipo: 'DEVOLUCION' as const, equipo_id: items[0].id,
       items: items.map((e) => ({ equipo_id: e.id, observaciones: obs[e.id] })),
-      cedula_colaborador: items[0].cedula_asignado, observaciones: novedades,
+      // El acta al proveedor no va a nombre de nadie aunque el equipo esté
+      // asignado: quien responde por la salida es el técnico.
+      cedula_colaborador: agrupaPorDueno ? items[0].cedula_asignado : null,
+      observaciones: novedades,
     };
     const previo = borradorRef.current;
     if (previo) {
@@ -146,6 +189,10 @@ export function Devolucion() {
     borradorRef.current = acta;
     return acta;
   };
+
+  /** Colaborador que encabeza el acta, o null si esta devolución no lleva uno. */
+  const colaboradorDelActa = async (primero: Equipo) =>
+    agrupaPorDueno && primero.cedula_asignado ? await getColaborador(primero.cedula_asignado) : null;
 
   /** Suelta el acta reservada si el técnico abandona el flujo sin finalizar. */
   const descartarBorrador = () => {
@@ -163,12 +210,12 @@ export function Devolucion() {
     if (!seleccionados.length) { toast.error(t('assign.noneSelected')); return; }
     try {
       const primero = seleccionados[0];
-      const colab = primero.cedula_asignado ? await getColaborador(primero.cedula_asignado) : null;
+      const colab = await colaboradorDelActa(primero);
       const acta = await asegurarActa();
       const blob = await generarActaPdf({
         tipo: 'DEVOLUCION', consecutivo: acta.consecutivo || 'ACTA', items: buildItems(),
         colaborador: colab, tecnico: perfil?.nombre, tecnicoCedula: perfil?.cedula ?? undefined,
-        firmaTecnicoDataUrl: perfil?.firma_data, novedades,
+        firmaTecnicoDataUrl: firmaTecnico(), novedades,
       });
       abrirBlob(blob, `${acta.consecutivo || `acta-devolucion-${fmtSerial(primero.serial)}`}.pdf`);
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
@@ -177,20 +224,23 @@ export function Devolucion() {
   const finalizar = async () => {
     if (!seleccionados.length) { toast.error(t('assign.noneSelected')); return; }
     if (destino === 'proveedor' && !proveedor) { toast.error(t('return.selectSupplier')); return; }
-    const modo = firmaRef.current?.getMode() ?? 'digital';
-    const firma = modo === 'digital' ? firmaRef.current?.toDataURL() : null;
-    const archivoFirmado = modo === 'manual' ? firmaRef.current?.getArchivo() : null;
     // El acta no puede salir sin firma: una vez emitida ya no se firma después.
-    if (modo === 'digital' && !firma) { toast.error(t('common.signHere')); return; }
-    if (modo === 'manual' && !archivoFirmado) { toast.error(t('acta.faltaArchivo')); return; }
+    // A bodega firma el colaborador (digital o física); al proveedor no hay
+    // colaborador y responde el técnico que registra la salida.
+    const firmaTec = firmaTecnico();
+    const modo = agrupaPorDueno ? firmaRef.current?.getMode() ?? 'digital' : 'digital';
+    const firma = agrupaPorDueno && modo === 'digital' ? firmaRef.current?.toDataURL() ?? null : null;
+    const archivoFirmado = agrupaPorDueno && modo === 'manual' ? firmaRef.current?.getArchivo() ?? null : null;
+    if (!agrupaPorDueno && !firmaTec) { toast.error(t('return.faltaFirmaTecnico')); return; }
+    if (agrupaPorDueno && modo === 'digital' && !firma) { toast.error(t('common.signHere')); return; }
+    if (agrupaPorDueno && modo === 'manual' && !archivoFirmado) { toast.error(t('acta.faltaArchivo')); return; }
     setBusy(true);
     try {
       // Último contraste con la base antes de emitir el documento.
       const vigentes = await revalidarSeleccion();
       if (!vigentes) return;
       if (!vigentes.length) { toast.error(t('assign.noneSelected')); return; }
-      const primero = vigentes[0];
-      const colab = primero.cedula_asignado ? await getColaborador(primero.cedula_asignado) : null;
+      const colab = await colaboradorDelActa(vigentes[0]);
       // Reutiliza el acta ya reservada si se descargó para firmar a mano, así
       // el consecutivo del papel firmado es el que queda guardado.
       const acta = await asegurarActa(vigentes);
@@ -203,11 +253,11 @@ export function Devolucion() {
         documento = archivoFirmado;
         nombreDoc = archivoFirmado.name;
       } else {
-        await updateActa(acta.id, { firma_data: firma, firmado: true });
+        await updateActa(acta.id, { firma_data: firma ?? firmaTec, firmado: true });
         documento = await generarActaPdf({
           tipo: 'DEVOLUCION', consecutivo: acta.consecutivo || 'ACTA', items: buildItems(vigentes),
           colaborador: colab, firmaDataUrl: firma, tecnico: perfil?.nombre,
-          tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: perfil?.firma_data, novedades,
+          tecnicoCedula: perfil?.cedula ?? undefined, firmaTecnicoDataUrl: firmaTec, novedades,
         });
         await subirPdfActa(acta.id, documento);
         nombreDoc = `${acta.consecutivo || 'acta'}.pdf`;
@@ -222,7 +272,9 @@ export function Devolucion() {
       }
       abrirBlob(documento, nombreDoc);
       toast.success(t('return.done'));
-      setSel({}); setObs({}); setNovedades(''); setProveedor(''); refetch();
+      // Vuelve a la pregunta inicial: la siguiente devolución puede ir a otro
+      // destino y arrastrar la elección anterior confunde más de lo que ahorra.
+      setSel({}); setObs({}); setNovedades(''); setProveedor(''); setDestino(null); refetch();
     } catch (e: any) { toast.error(e.message ?? t('common.error')); }
     finally { setBusy(false); }
   };
@@ -238,16 +290,56 @@ export function Devolucion() {
 
       {coeditores.length > 0 && <CoeditBanner peers={coeditores} className="mb-4" />}
 
+      {/* Paso 1: a dónde va la devolución. Cada destino tiene su propia lista de
+          equipos devolubles, así que se pregunta antes de mostrar nada. */}
+      {!destino && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="card p-6">
+          <div className="text-sm font-semibold">{t('return.destinoTitulo')}</div>
+          <p className="text-sm text-ink-400 mb-4">{t('return.destinoSub')}</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            {([
+              ['bodega', Warehouse, t('return.toWarehouse'), t('return.toWarehouseDesc'), equipos.filter(devolvibleABodega).length],
+              ['proveedor', Truck, t('return.toSupplier'), t('return.toSupplierDesc'), equipos.filter(devolvibleAProveedor).length],
+            ] as const).map(([val, Icon, label, desc, n]) => (
+              <button key={val} onClick={() => elegirDestino(val)}
+                className="p-5 rounded-2xl border-2 border-ink-100 dark:border-white/10 text-left transition-all hover:border-brand-500 hover:bg-brand-500/5">
+                <div className="flex items-center gap-3 mb-2">
+                  <Icon size={22} className="text-brand-500 shrink-0" />
+                  <span className="font-semibold flex-1">{label}</span>
+                  <ChevronRight size={16} className="text-ink-400 shrink-0" />
+                </div>
+                <p className="text-xs text-ink-400 leading-relaxed">{desc}</p>
+                <div className="mt-3 text-xs font-medium text-ink-500 dark:text-ink-300">
+                  {t('return.disponiblesParaDevolver', { n })}
+                </div>
+              </button>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {destino && (
       <div className="card p-6 space-y-5">
+        <div className="flex items-center gap-2">
+          <button className="btn-ghost !p-1.5" onClick={() => elegirDestino(null)} title={t('return.cambiarDestino')}>
+            <ArrowLeft size={16} />
+          </button>
+          <span className="badge bg-brand-500/15 text-brand-600 inline-flex items-center gap-1.5">
+            {destino === 'bodega' ? <Warehouse size={13} /> : <Truck size={13} />}
+            {destino === 'bodega' ? t('return.toWarehouse') : t('return.toSupplier')}
+          </span>
+        </div>
         <div>
           <div className="flex items-center justify-between mb-1">
-            <label className="label !mb-0">{t('return.selectMultiple')}</label>
+            <label className="label !mb-0">
+              {destino === 'proveedor' ? t('return.selectMultipleProveedor') : t('return.selectMultiple')}
+            </label>
             {seleccionados.length > 0 && (
               <span className="badge bg-brand-500/15 text-brand-600">{t('assign.selectedCount', { n: seleccionados.length })}</span>
             )}
           </div>
           {/* A quién le queda esta acta: evita descubrirlo al ver el PDF. */}
-          {seleccionados.length > 0 && (
+          {agrupaPorDueno && seleccionados.length > 0 && (
             <div className="text-xs text-ink-500 dark:text-ink-300">
               {t('return.duenoActual', { quien: nombraDueno(cedulaFlujo) })}
             </div>
@@ -274,6 +366,16 @@ export function Devolucion() {
                   <div className="flex-1 min-w-0">
                     <div className="font-medium truncate">{e.marca} {e.linea_modelo} <span className="text-xs text-ink-400">· {e.tipo}</span></div>
                     <div className="text-xs text-ink-400 font-mono">{fmtSerial(e.serial)} {e.cedula_asignado && `· C.C. ${e.cedula_asignado}`}</div>
+                    {/* Por qué este equipo sale al proveedor: el estado de su contrato. */}
+                    {destino === 'proveedor' && (
+                      <div className={`text-xs mt-0.5 flex items-center gap-1 ${
+                        contratoVencido(e) ? 'text-red-600 dark:text-danger' : 'text-amber-600 dark:text-warning'}`}>
+                        <FileWarning size={11} className="shrink-0" />
+                        {contratoVencido(e)
+                          ? t('return.contratoVencidoEl', { fecha: fmtDate(e.fecha_vencimiento_contrato, i18n.language) })
+                          : t('return.contratoVenceEn', { dias: diasDeContrato(e) })}
+                      </div>
+                    )}
                   </div>
                   {ajeno
                     ? <span className="badge bg-ink-500/10 text-ink-500 shrink-0">{t('return.otroDuenoCorto')}</span>
@@ -282,7 +384,8 @@ export function Devolucion() {
               );
             })}
             {candidatos.length === 0 && (
-              <EmptyState variant="search" icon={PackageX} title={t('common.noResultsTitle')} description={t('return.noCandidates')} className="!py-8" />
+              <EmptyState variant="search" icon={PackageX} title={t('common.noResultsTitle')}
+                description={destino === 'proveedor' ? t('return.noCandidatesProveedor') : t('return.noCandidates')} className="!py-8" />
             )}
           </div>
         </div>
@@ -300,17 +403,6 @@ export function Devolucion() {
                   <input className="input !py-1.5 text-sm" placeholder={t('assign.itemObs')}
                     value={obs[e.id] ?? ''} onChange={(ev) => setObs({ ...obs, [e.id]: ev.target.value })} />
                 </div>
-              ))}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              {([['bodega', Warehouse, t('return.toWarehouse')], ['proveedor', Truck, t('return.toSupplier')]] as const).map(([val, Icon, label]) => (
-                <button key={val} onClick={() => setDestino(val)}
-                  className={`p-4 rounded-2xl border-2 transition-all flex flex-col items-center gap-2 ${
-                    destino === val ? 'border-brand-500 bg-brand-500/5' : 'border-ink-100 dark:border-white/10'}`}>
-                  <Icon size={24} className={destino === val ? 'text-brand-500' : 'text-ink-400'} />
-                  <span className="text-sm font-medium">{label}</span>
-                </button>
               ))}
             </div>
 
@@ -344,10 +436,29 @@ export function Devolucion() {
               <Eye size={16} /> {t('acta.preview')}
             </button>
 
-            <div>
-              <label className="label">{t('acta.signature')}</label>
-              <FirmaActa ref={firmaRef} onDescargar={descargarParaFirmar} />
-            </div>
+            {/* La salida al proveedor no la firma ningún colaborador: la respalda
+                el técnico, con la firma de su perfil o dibujada aquí mismo. */}
+            {destino === 'proveedor' ? (
+              <div>
+                <label className="label">{t('return.firmaTecnico')}</label>
+                <p className="text-xs text-ink-400 mb-2">{t('return.firmaTecnicoHint')}</p>
+                {perfil?.firma_data ? (
+                  <div className="flex items-center gap-3 p-3.5 rounded-2xl border border-success/40 bg-success/8">
+                    <img src={perfil.firma_data} alt="" className="h-10 max-w-[140px] object-contain" />
+                    <div className="text-xs text-ink-500 dark:text-ink-300">
+                      {t('return.firmaPerfil', { nombre: perfil?.nombre ?? '' })}
+                    </div>
+                  </div>
+                ) : (
+                  <SignaturePad ref={firmaTecnicoRef} />
+                )}
+              </div>
+            ) : (
+              <div>
+                <label className="label">{t('acta.signature')}</label>
+                <FirmaActa ref={firmaRef} onDescargar={descargarParaFirmar} />
+              </div>
+            )}
 
             <div className="flex justify-end">
               <Button variant="primary" loading={busy} icon={FileSignature} onClick={finalizar}>
@@ -357,6 +468,7 @@ export function Devolucion() {
           </motion.div>
         )}
       </div>
+      )}
     </div>
   );
 }
