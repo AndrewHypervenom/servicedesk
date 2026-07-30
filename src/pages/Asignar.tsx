@@ -309,7 +309,7 @@ export function Asignar() {
                   {dato(t('auth.name'), colab.nombre)}
                   {dato('Cargo', colab.cargo)}
                   {dato(t('auth.email'), colab.correo)}
-                  {dato(t('equipo.proyectoAsignado'), colab.proyecto)}
+                  {dato(t('colabField.centroCostos'), colab.centro_costos)}
                   {dato('Líder inmediato', colab.lider)}
                   {dato('Sede', sedeColab)}
                 </div>
@@ -518,7 +518,7 @@ export function Asignar() {
             <p className="text-sm text-ink-400 mb-4">{t('assign.signSub')}</p>
 
             <div className="p-4 rounded-2xl bg-ink-50 dark:bg-white/5 mb-4 text-sm">
-              <div className="font-medium mb-1">→ {colab?.nombre} · {colab?.proyecto || '—'}</div>
+              <div className="font-medium mb-1">→ {colab?.nombre} · {colab?.centro_costos || '—'}</div>
               {seleccionados.map((e) => (
                 <div key={e.id} className="text-ink-500 text-xs flex items-center gap-1.5">
                   <Plus size={11} /> {e.marca} {e.linea_modelo} · <span className="font-mono">{fmtSerial(e.serial)}</span>
