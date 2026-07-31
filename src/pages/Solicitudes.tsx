@@ -4,8 +4,11 @@ import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShieldQuestion, Undo2, Trash2, Loader2, Boxes, Users, Truck, CheckCircle2, Clock, SearchX,
+  AlertTriangle,
 } from 'lucide-react';
-import { listSolicitudes, listPerfiles, restaurarRegistro, eliminarDefinitivo, contarBloqueosDeBorrado } from '@/lib/api';
+import { listSolicitudes, listPerfiles, restaurarRegistro, eliminarDefinitivo, getPlanDeBorrado } from '@/lib/api';
+import type { PlanDeBorrado } from '@/lib/api';
+import { Modal } from '@/components/ui/Modal';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -30,6 +33,8 @@ export function Solicitudes() {
   const [verResueltas, setVerResueltas] = useState(false);
   const [ocupada, setOcupada] = useState<number | null>(null);
   const [q, setQ] = useState('');
+  const [plan, setPlan] = useState<{ s: SolicitudBorrado; plan: PlanDeBorrado } | null>(null);
+  const [borrando, setBorrando] = useState(false);
 
   const { data: solicitudes = [], isLoading } = useQuery({
     queryKey: ['solicitudes'], queryFn: () => listSolicitudes(false),
@@ -69,31 +74,36 @@ export function Solicitudes() {
     } finally { setOcupada(null); }
   };
 
-  const eliminar = async (s: SolicitudBorrado) => {
+  /**
+   * Paso 1: se consulta qué se llevaría el borrado y se abre el resumen.
+   * Intentarlo a ciegas acababa en una violación de llave foránea que llegaba
+   * como un 409 sin texto, y el ADMIN se quedaba sin saber por qué "no le
+   * deja" ni qué tendría que hacer para poder.
+   */
+  const revisar = async (s: SolicitudBorrado) => {
     setOcupada(s.id);
     try {
-      // Se mira antes qué lo referencia. Intentarlo a ciegas acaba en una
-      // violación de llave foránea que llega como un 409 sin texto, y el ADMIN
-      // se queda sin saber por qué "no le deja" ni qué tendría que hacer.
-      const b = await contarBloqueosDeBorrado(s.entidad, s.registro_id);
-      const detalle = [
-        b.movimientos ? t('requests.blockMovimientos', { count: b.movimientos }) : null,
-        b.actas ? t('requests.blockActas', { count: b.actas }) : null,
-        b.equipos ? t('requests.blockEquipos', { count: b.equipos }) : null,
-      ].filter(Boolean).join(', ');
-      if (detalle) {
-        toast.error(t('requests.errBlocked', { etiqueta: s.etiqueta, detalle }));
-        return;
-      }
-      await eliminarDefinitivo(s, perfil!.id);
-      toast.success(t('requests.deletedForever'));
-      refrescar();
+      setPlan({ s, plan: await getPlanDeBorrado(s.entidad, s.registro_id) });
     } catch (e: any) {
-      // Caso esperado, no un fallo: los triggers bloquean el borrado duro de
-      // registros con historial. El mensaje viene de la base de datos y explica
-      // cuántos movimientos y actas lo impiden.
       toast.error(e?.message ?? t('requests.errDelete'));
     } finally { setOcupada(null); }
+  };
+
+  /** Paso 2: ejecutar, ya con el plan a la vista y confirmado. */
+  const eliminar = async () => {
+    if (!plan) return;
+    setBorrando(true);
+    try {
+      await eliminarDefinitivo(plan.s, perfil!.id, plan.plan);
+      toast.success(t('requests.deletedForever'));
+      setPlan(null);
+      refrescar();
+    } catch (e: any) {
+      // Los bloqueos se revalidan en la base dentro de la transacción, por si
+      // algo cambió entre el resumen y la confirmación. El texto viene de allí
+      // y ya dice qué hay que resolver.
+      toast.error(e?.message ?? t('requests.errDelete'));
+    } finally { setBorrando(false); }
   };
 
   return (
@@ -193,7 +203,7 @@ export function Solicitudes() {
                         {trabajando ? <Loader2 size={15} className="animate-spin" /> : <Undo2 size={15} />}
                         {t('requests.restore')}
                       </button>
-                      <button onClick={() => eliminar(s)} disabled={trabajando}
+                      <button onClick={() => revisar(s)} disabled={trabajando}
                         className="btn-danger text-sm">
                         <Trash2 size={15} />
                         {t('requests.deleteForever')}
@@ -210,6 +220,88 @@ export function Solicitudes() {
       <p className="text-xs text-ink-400 mt-6 leading-relaxed max-w-2xl">
         {t('requests.footerNote')}
       </p>
+
+      <Modal
+        open={!!plan}
+        onClose={() => !borrando && setPlan(null)}
+        title={t('requests.planTitle')}
+        subtitle={plan?.s.etiqueta}
+        size="sm"
+      >
+        {plan && (() => {
+          const p = plan.plan;
+          // Lo que impide continuar se resuelve fuera de esta pantalla, así que
+          // el modal deja de ofrecer el botón y pasa a explicar el siguiente paso.
+          const bloqueos = [
+            p.equipos_asignados
+              ? t('requests.blockAssigned', { count: p.equipos_asignados })
+              : null,
+            p.actas_compartidas.length
+              ? t('requests.blockShared', {
+                  count: p.actas_compartidas.length,
+                  lista: p.actas_compartidas.map((a) => a.consecutivo ?? '—').join(', '),
+                })
+              : null,
+          ].filter(Boolean) as string[];
+
+          const arrastre = [
+            p.movimientos ? t('requests.dropMovimientos', { count: p.movimientos }) : null,
+            p.actas.length ? t('requests.dropActas', { count: p.actas.length }) : null,
+          ].filter(Boolean) as string[];
+
+          return (
+            <div className="space-y-4">
+              {bloqueos.length > 0 ? (
+                <div className="flex items-start gap-3 p-3 rounded-xl bg-warning/10 border border-warning/25">
+                  <AlertTriangle size={18} className="text-warning shrink-0 mt-0.5" />
+                  <div className="text-sm leading-snug space-y-1.5">
+                    <p className="font-medium">{t('requests.planBlockedTitle')}</p>
+                    <ul className="list-disc pl-4 space-y-1">
+                      {bloqueos.map((b) => <li key={b}>{b}</li>)}
+                    </ul>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-start gap-3 p-3 rounded-xl bg-danger/10 border border-danger/25">
+                    <AlertTriangle size={18} className="text-danger shrink-0 mt-0.5" />
+                    <div className="text-sm leading-snug">
+                      {arrastre.length
+                        ? <>
+                            <p className="mb-1.5">{t('requests.planWillDelete')}</p>
+                            <ul className="list-disc pl-4 space-y-1">
+                              {arrastre.map((a) => <li key={a}>{a}</li>)}
+                            </ul>
+                          </>
+                        : t('requests.planNothingElse')}
+                    </div>
+                  </div>
+                  {p.actas.length > 0 && (
+                    <p className="text-sm text-ink-500">
+                      {t('requests.planActasHint', {
+                        lista: p.actas.map((a) => a.consecutivo ?? '—').join(', '),
+                      })}
+                    </p>
+                  )}
+                  <p className="text-sm text-ink-500">{t('requests.planIrreversible')}</p>
+                </>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button onClick={() => setPlan(null)} disabled={borrando} className="btn-secondary">
+                  {bloqueos.length ? t('common.close') : t('common.cancel')}
+                </button>
+                {bloqueos.length === 0 && (
+                  <button onClick={eliminar} disabled={borrando} className="btn-danger">
+                    {borrando ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                    {t('requests.deleteForever')}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </Modal>
     </div>
   );
 }

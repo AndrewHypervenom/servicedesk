@@ -544,66 +544,79 @@ export async function restaurarRegistro(s: SolicitudBorrado, adminId: string): P
   if (e2) throw e2;
 }
 
-export interface BloqueosBorrado {
-  movimientos: number;
-  actas: number;
-  /** Equipos todavía asignados. Solo aplica a colaboradores. */
-  equipos: number;
-}
-
 /**
- * Cuenta lo que impide eliminar un registro de la base.
+ * Qué se llevaría por delante eliminar un registro, y qué lo impide.
  *
- * Sin esto el borrado se intenta a ciegas y Postgres responde con una
- * violación de llave foránea que PostgREST convierte en un 409 sin mensaje
- * legible. Los proveedores no los referencia nadie —`equipos.proveedor` es
- * texto suelto, no una FK—, así que nunca están bloqueados.
+ * `actas` y `movimientos` se arrastran; `equipos_asignados` y
+ * `actas_compartidas` bloquean y los tiene que resolver una persona antes.
  */
-export async function contarBloqueosDeBorrado(
+export interface PlanDeBorrado {
+  movimientos: number;
+  /** Equipos todavía asignados al colaborador. Solo aplica a colaboradores. */
+  equipos_asignados: number;
+  actas: ActaEnPlan[];
+  /** Actas que cubren además otros equipos: borrarlas mutilaría su documento. */
+  actas_compartidas: ActaEnPlan[];
+}
+
+export interface ActaEnPlan {
+  id: string;
+  consecutivo: string | null;
+  firmado: boolean;
+  pdf_url: string | null;
+  archivo_firmado_url: string | null;
+}
+
+export async function getPlanDeBorrado(
   entidad: EntidadBorrable, registroId: string,
-): Promise<BloqueosBorrado> {
-  const cab = { count: 'exact' as const, head: true };
-  const contar = async (
-    q: PromiseLike<{ count: number | null; error: { message: string } | null }>,
-  ) => {
-    const { count, error } = await q;
-    if (error) throw error;
-    return count ?? 0;
-  };
-
-  if (entidad === 'proveedores') return { movimientos: 0, actas: 0, equipos: 0 };
-
-  if (entidad === 'equipos') {
-    const [movimientos, actas] = await Promise.all([
-      contar(supabase.from('movimientos').select('id', cab).eq('equipo_id', registroId)),
-      contar(supabase.from('actas').select('id', cab).eq('equipo_id', registroId)),
-    ]);
-    return { movimientos, actas, equipos: 0 };
-  }
-
-  const [movimientos, actas, equipos] = await Promise.all([
-    contar(supabase.from('movimientos').select('id', cab)
-      .or(`cedula_origen.eq.${registroId},cedula_destino.eq.${registroId}`)),
-    contar(supabase.from('actas').select('id', cab).eq('cedula_colaborador', registroId)),
-    contar(supabase.from('equipos').select('id', cab).eq('cedula_asignado', registroId)),
-  ]);
-  return { movimientos, actas, equipos };
+): Promise<PlanDeBorrado> {
+  const { data, error } = await supabase.rpc('plan_de_borrado', {
+    p_entidad: entidad, p_registro_id: registroId,
+  });
+  if (error) throw error;
+  return data as PlanDeBorrado;
 }
 
 /**
- * Elimina el registro de la base. Puede fallar por diseño: los triggers
- * bloquean el borrado de equipos y colaboradores con historial. Ese error se
- * propaga tal cual para que la pantalla lo muestre.
+ * Elimina el registro con sus actas y movimientos, en una sola transacción.
+ *
+ * Los PDF de las actas se borran antes desde aquí porque Postgres no alcanza
+ * el storage. Van primero a propósito: el bucket `actas` es público, así que
+ * un PDF huérfano sigue siendo descargable por cualquiera.
  */
-export async function eliminarDefinitivo(s: SolicitudBorrado, adminId: string): Promise<void> {
-  const col = s.entidad === 'colaboradores' ? 'cedula' : 'id';
-  const { error } = await supabase.from(s.entidad).delete().eq(col, s.registro_id);
+export async function eliminarEnCascada(
+  entidad: EntidadBorrable, registroId: string, plan: PlanDeBorrado,
+): Promise<void> {
+  const rutas = plan.actas
+    .flatMap((a) => [rutaEnBucketActas(a.pdf_url), rutaEnBucketActas(a.archivo_firmado_url)])
+    .filter((r): r is string => !!r);
+  if (rutas.length) {
+    const { error } = await supabase.storage.from('actas').remove(rutas);
+    if (error) throw error;
+  }
+  const { error } = await supabase.rpc('eliminar_registro_en_cascada', {
+    p_entidad: entidad, p_registro_id: registroId,
+  });
   if (error) throw error;
+}
 
-  const { error: e2 } = await supabase.from('solicitudes_borrado')
+/**
+ * Elimina el registro de la base arrastrando su historial y cierra la
+ * solicitud. El plan sale de `getPlanDeBorrado` y ya se le enseñó al ADMIN,
+ * así que aquí no hay sorpresas: se borra exactamente lo que confirmó.
+ *
+ * Sigue pudiendo fallar por diseño —equipos asignados, actas de varios
+ * equipos—; ese error viene de la base con el texto que hay que mostrar.
+ */
+export async function eliminarDefinitivo(
+  s: SolicitudBorrado, adminId: string, plan: PlanDeBorrado,
+): Promise<void> {
+  await eliminarEnCascada(s.entidad, s.registro_id, plan);
+
+  const { error } = await supabase.from('solicitudes_borrado')
     .update({ estado: 'APROBADA', resuelto_por: adminId, resuelto_en: new Date().toISOString() })
     .eq('id', s.id);
-  if (e2) throw e2;
+  if (error) throw error;
 }
 
 /**
