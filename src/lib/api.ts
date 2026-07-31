@@ -305,7 +305,10 @@ export async function eliminarActaConDocumentos(a: Acta): Promise<void> {
     const { error } = await supabase.storage.from('actas').remove(rutas);
     if (error) throw error;
   }
-  const { error } = await supabase.from('actas').delete().eq('id', a.id);
+  // Por RPC y no con un DELETE directo: borrar el acta pone `acta_id` a NULL en
+  // sus movimientos, y esa tabla es inmutable. El RPC levanta esa inmutabilidad
+  // solo dentro de su transacción.
+  const { error } = await supabase.rpc('eliminar_acta', { p_acta_id: a.id });
   if (error) throw error;
 }
 

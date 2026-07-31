@@ -232,17 +232,19 @@ export function Solicitudes() {
           const p = plan.plan;
           // Lo que impide continuar se resuelve fuera de esta pantalla, así que
           // el modal deja de ofrecer el botón y pasa a explicar el siguiente paso.
-          const bloqueos = [
-            p.equipos_asignados
-              ? t('requests.blockAssigned', { count: p.equipos_asignados })
-              : null,
-            p.actas_compartidas.length
-              ? t('requests.blockShared', {
-                  count: p.actas_compartidas.length,
-                  lista: p.actas_compartidas.map((a) => a.consecutivo ?? '—').join(', '),
-                })
-              : null,
-          ].filter(Boolean) as string[];
+          // Cada bloqueo lleva su propia lista de registros concretos: decir
+          // "borra primero las actas" sin nombrarlas deja al ADMIN sin saber
+          // cuáles de todas las de la pantalla de Actas son.
+          const bloqueos: { texto: string; items?: string[] }[] = [];
+          if (p.equipos_asignados) {
+            bloqueos.push({ texto: t('requests.blockAssigned', { count: p.equipos_asignados }) });
+          }
+          if (p.actas_compartidas.length) {
+            bloqueos.push({
+              texto: t('requests.blockShared', { count: p.actas_compartidas.length }),
+              items: p.actas_compartidas.map((a) => a.consecutivo || a.id),
+            });
+          }
 
           const arrastre = [
             p.movimientos ? t('requests.dropMovimientos', { count: p.movimientos }) : null,
@@ -254,11 +256,18 @@ export function Solicitudes() {
               {bloqueos.length > 0 ? (
                 <div className="flex items-start gap-3 p-3 rounded-xl bg-warning/10 border border-warning/25">
                   <AlertTriangle size={18} className="text-warning shrink-0 mt-0.5" />
-                  <div className="text-sm leading-snug space-y-1.5">
+                  <div className="text-sm leading-snug space-y-2">
                     <p className="font-medium">{t('requests.planBlockedTitle')}</p>
-                    <ul className="list-disc pl-4 space-y-1">
-                      {bloqueos.map((b) => <li key={b}>{b}</li>)}
-                    </ul>
+                    {bloqueos.map((b) => (
+                      <div key={b.texto} className="space-y-1">
+                        <p>{b.texto}</p>
+                        {b.items && (
+                          <ul className="list-disc pl-4 font-mono text-xs space-y-0.5">
+                            {b.items.map((i) => <li key={i}>{i}</li>)}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
                   </div>
                 </div>
               ) : (
