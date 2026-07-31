@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShieldQuestion, Undo2, Trash2, Loader2, Boxes, Users, Truck, CheckCircle2, Clock, SearchX,
 } from 'lucide-react';
-import { listSolicitudes, listPerfiles, restaurarRegistro, eliminarDefinitivo } from '@/lib/api';
+import { listSolicitudes, listPerfiles, restaurarRegistro, eliminarDefinitivo, contarBloqueosDeBorrado } from '@/lib/api';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { EmptyState } from '@/components/ui/EmptyState';
@@ -72,6 +72,19 @@ export function Solicitudes() {
   const eliminar = async (s: SolicitudBorrado) => {
     setOcupada(s.id);
     try {
+      // Se mira antes qué lo referencia. Intentarlo a ciegas acaba en una
+      // violación de llave foránea que llega como un 409 sin texto, y el ADMIN
+      // se queda sin saber por qué "no le deja" ni qué tendría que hacer.
+      const b = await contarBloqueosDeBorrado(s.entidad, s.registro_id);
+      const detalle = [
+        b.movimientos ? t('requests.blockMovimientos', { count: b.movimientos }) : null,
+        b.actas ? t('requests.blockActas', { count: b.actas }) : null,
+        b.equipos ? t('requests.blockEquipos', { count: b.equipos }) : null,
+      ].filter(Boolean).join(', ');
+      if (detalle) {
+        toast.error(t('requests.errBlocked', { etiqueta: s.etiqueta, detalle }));
+        return;
+      }
       await eliminarDefinitivo(s, perfil!.id);
       toast.success(t('requests.deletedForever'));
       refrescar();

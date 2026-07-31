@@ -544,6 +544,52 @@ export async function restaurarRegistro(s: SolicitudBorrado, adminId: string): P
   if (e2) throw e2;
 }
 
+export interface BloqueosBorrado {
+  movimientos: number;
+  actas: number;
+  /** Equipos todavía asignados. Solo aplica a colaboradores. */
+  equipos: number;
+}
+
+/**
+ * Cuenta lo que impide eliminar un registro de la base.
+ *
+ * Sin esto el borrado se intenta a ciegas y Postgres responde con una
+ * violación de llave foránea que PostgREST convierte en un 409 sin mensaje
+ * legible. Los proveedores no los referencia nadie —`equipos.proveedor` es
+ * texto suelto, no una FK—, así que nunca están bloqueados.
+ */
+export async function contarBloqueosDeBorrado(
+  entidad: EntidadBorrable, registroId: string,
+): Promise<BloqueosBorrado> {
+  const cab = { count: 'exact' as const, head: true };
+  const contar = async (
+    q: PromiseLike<{ count: number | null; error: { message: string } | null }>,
+  ) => {
+    const { count, error } = await q;
+    if (error) throw error;
+    return count ?? 0;
+  };
+
+  if (entidad === 'proveedores') return { movimientos: 0, actas: 0, equipos: 0 };
+
+  if (entidad === 'equipos') {
+    const [movimientos, actas] = await Promise.all([
+      contar(supabase.from('movimientos').select('id', cab).eq('equipo_id', registroId)),
+      contar(supabase.from('actas').select('id', cab).eq('equipo_id', registroId)),
+    ]);
+    return { movimientos, actas, equipos: 0 };
+  }
+
+  const [movimientos, actas, equipos] = await Promise.all([
+    contar(supabase.from('movimientos').select('id', cab)
+      .or(`cedula_origen.eq.${registroId},cedula_destino.eq.${registroId}`)),
+    contar(supabase.from('actas').select('id', cab).eq('cedula_colaborador', registroId)),
+    contar(supabase.from('equipos').select('id', cab).eq('cedula_asignado', registroId)),
+  ]);
+  return { movimientos, actas, equipos };
+}
+
 /**
  * Elimina el registro de la base. Puede fallar por diseño: los triggers
  * bloquean el borrado de equipos y colaboradores con historial. Ese error se
