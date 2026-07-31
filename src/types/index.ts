@@ -171,7 +171,16 @@ export interface Acta {
   correo_enviado: boolean;
   correo_destino?: string | null;
   observaciones?: string | null;
+  /** Perfil del técnico que generó el acta; queda fijo aunque la abra otro. */
+  generado_por?: string | null;
   creado_en: string;
+}
+
+/** Lo que el RPC `tecnico_de_acta` expone del autor de un acta. */
+export interface TecnicoActa {
+  nombre: string;
+  cedula: string | null;
+  firma_data: string | null;
 }
 
 export interface Perfil {

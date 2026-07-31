@@ -202,7 +202,9 @@ export function Devolucion() {
       borradorRef.current = { ...previo, ...datos };
       return borradorRef.current;
     }
-    const acta = await createActa({ ...datos, firmado: false });
+    // Se guarda en el acta quién la generó: al reabrirla, el técnico que firma
+    // el documento es este y no quien la esté consultando.
+    const acta = await createActa({ ...datos, firmado: false, generado_por: perfil?.id ?? null });
     borradorRef.current = acta;
     return acta;
   };

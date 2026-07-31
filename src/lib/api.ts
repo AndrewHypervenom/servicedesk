@@ -3,7 +3,7 @@ import { tipoMovimientoEstado } from './estados';
 import type {
   Equipo, Colaborador, Proveedor, Movimiento, Acta, Perfil, Integracion,
   TipoMovimiento, EstadoAsignacion, RolUsuario, Pais, Sede, Marca,
-  EntidadBorrable, SolicitudBorrado, RegistroAuditoria,
+  EntidadBorrable, SolicitudBorrado, RegistroAuditoria, TecnicoActa,
 } from '@/types';
 
 // El filtro `eliminado_en is null` se repite en cliente aunque RLS ya lo aplica.
@@ -280,6 +280,35 @@ export async function deleteActa(id: string): Promise<void> {
   if (error) throw error;
 }
 
+/** Ruta dentro del bucket `actas` a partir de la URL pública guardada. */
+function rutaEnBucketActas(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const marca = '/object/public/actas/';
+  const i = url.indexOf(marca);
+  if (i < 0) return null;
+  return decodeURIComponent(url.slice(i + marca.length).split('?')[0]) || null;
+}
+
+/**
+ * Elimina un acta con todo y documentos. Solo para ADMIN: lo impide de verdad
+ * el trigger `actas_borrado_solo_admin`, no la interfaz.
+ *
+ * Los archivos se borran primero y a propósito: el bucket `actas` es público,
+ * así que dejar el PDF huérfano equivale a no haber borrado nada. Si el storage
+ * falla se aborta sin tocar la fila, que es la única forma de volver a saber
+ * qué archivos había.
+ */
+export async function eliminarActaConDocumentos(a: Acta): Promise<void> {
+  const rutas = [rutaEnBucketActas(a.pdf_url), rutaEnBucketActas(a.archivo_firmado_url)]
+    .filter((r): r is string => !!r);
+  if (rutas.length) {
+    const { error } = await supabase.storage.from('actas').remove(rutas);
+    if (error) throw error;
+  }
+  const { error } = await supabase.from('actas').delete().eq('id', a.id);
+  if (error) throw error;
+}
+
 export async function subirActaFirmada(actaId: string, file: File): Promise<string | null> {
   const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
   const path = `${actaId}-firmada.${ext}`;
@@ -294,6 +323,30 @@ export async function subirActaFirmada(actaId: string, file: File): Promise<stri
 export async function listActas(): Promise<Acta[]> {
   const { data } = await supabase.from('actas').select('*').order('creado_en', { ascending: false });
   return (data as Acta[]) ?? [];
+}
+
+/**
+ * Técnico que generó un acta, para reimprimirla a su nombre y no al de quien la
+ * consulta. Pasa por un RPC SECURITY DEFINER porque la RLS de `perfiles` solo
+ * deja a ADMIN y LIDER leer perfiles ajenos. Devuelve null si el acta es
+ * anterior a `generado_por` o si el perfil ya no existe.
+ */
+export async function getTecnicoDeActa(actaId: string): Promise<TecnicoActa | null> {
+  const { data, error } = await supabase.rpc('tecnico_de_acta', { p_acta_id: actaId });
+  if (error) throw error;
+  return (data as TecnicoActa[] | null)?.[0] ?? null;
+}
+
+/**
+ * Nombre del técnico que generó cada acta, indexado por id de acta. Mismo
+ * motivo que `getTecnicoDeActa` para pasar por un RPC, pero resuelto de un
+ * golpe para toda la lista. Las actas sin autor conocido no vienen en el mapa.
+ */
+export async function getAutoresDeActas(): Promise<Map<string, string>> {
+  const { data, error } = await supabase.rpc('autores_de_actas');
+  if (error) throw error;
+  const filas = (data as { acta_id: string; nombre: string }[] | null) ?? [];
+  return new Map(filas.map((f) => [f.acta_id, f.nombre]));
 }
 
 export async function subirPdfActa(actaId: string, blob: Blob): Promise<string | null> {
