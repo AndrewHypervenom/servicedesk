@@ -117,6 +117,17 @@ body {
     @apply bg-gradient-to-br from-brand-500 to-magenta-500 bg-clip-text text-transparent;
   }
 
+  /* Nombre de la marca. No usa `.gradient-text` porque el magenta 500 sobre
+     fondo casi negro deja el final de la palabra medio apagado: el degradado
+     de la marca se aclara u oscurece según el tema para que "Calisto" tenga el
+     mismo peso en los dos. */
+  .wordmark {
+    @apply bg-gradient-to-r from-brand-600 to-magenta-500 bg-clip-text text-transparent;
+  }
+  .dark .wordmark {
+    @apply from-brand-300 to-magenta-300;
+  }
+
   /* Bloque de carga. El shimmer va en ::after para no depender de opacidad
      animada, que en listas largas cuesta caro al compositor. */
   .skeleton {

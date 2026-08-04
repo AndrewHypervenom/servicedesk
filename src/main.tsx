@@ -1,3 +1,6 @@
+// Primero de todo: lee la URL del enlace de recuperación antes de que se cree
+// el cliente de Supabase, que la consume y la limpia al arrancar.
+import '@/lib/recuperacion';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

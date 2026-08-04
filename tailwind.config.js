@@ -99,11 +99,17 @@ export default {
           '50%': { top: '100%' },
           '100%': { top: '0%' },
         },
+        // Barra de carga indeterminada: el bloque cruza el riel de lado a lado.
+        carga: {
+          '0%': { transform: 'translateX(-100%)' },
+          '100%': { transform: 'translateX(300%)' },
+        },
       },
       animation: {
         'fade-in': 'fade-in 0.4s ease-out',
         'slide-up': 'slide-up 0.5s cubic-bezier(0.16, 1, 0.3, 1)',
         'scan-line': 'scan-line 2.5s ease-in-out infinite',
+        carga: 'carga 1.2s cubic-bezier(0.65, 0, 0.35, 1) infinite',
       },
     },
   },

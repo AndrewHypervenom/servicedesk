@@ -1,11 +1,13 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Boxes, Lock, KeyRound, LogOut } from 'lucide-react';
+import { Lock, KeyRound, LogOut } from 'lucide-react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import { MascotaCalisto } from '@/components/marca/Calisto';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
+import { MedidorPassword, LARGO_MINIMO } from '@/components/auth/MedidorPassword';
 
 export function DefinirPassword() {
   const { t } = useTranslation();
@@ -16,7 +18,7 @@ export function DefinirPassword() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (pass1.length < 6) { toast.error(t('settings.passwordMin')); return; }
+    if (pass1.length < LARGO_MINIMO) { toast.error(t('settings.passwordMin')); return; }
     if (pass1 !== pass2) { toast.error(t('settings.passwordMismatch')); return; }
     setBusy(true);
     try {
@@ -33,9 +35,9 @@ export function DefinirPassword() {
     <div className="min-h-screen grid place-items-center bg-ink-50 dark:bg-ink-900 p-6">
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="w-full max-w-sm">
         <div className="flex items-center gap-3 mb-6">
-          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-brand-500 to-brand-700 grid place-items-center text-white"><Boxes size={20} /></div>
+          <MascotaCalisto className="w-14 shrink-0" paralaje={0} />
           <div className="leading-tight">
-            <div className="font-semibold">{t('app.name')}</div>
+            <div className="text-lg font-bold tracking-tight wordmark">{t('app.name')}</div>
             <div className="text-[11px] text-ink-400">{perfil?.correo}</div>
           </div>
         </div>
@@ -51,6 +53,7 @@ export function DefinirPassword() {
                 <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-ink-400" />
                 <input type="password" className="input pl-9" value={pass1} onChange={(e) => setPass1(e.target.value)} placeholder="mín. 6 caracteres" required />
               </div>
+              <MedidorPassword valor={pass1} />
             </div>
             <div>
               <label className="label">{t('settings.confirmPassword')}</label>

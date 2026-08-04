@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "Service Desk",
+    "name": "Calisto",
     "subtitle": "Inventario y Trazabilidad"
   },
   "nav": {
@@ -141,7 +141,42 @@
     "featureI18n": "Español · Português · API abierta",
     "showPassword": "Mostrar contraseña",
     "hidePassword": "Ocultar contraseña",
-    "secureConnection": "Conexión cifrada · Sesión protegida"
+    "secureConnection": "Conexión cifrada · Sesión protegida",
+    "forgotPassword": "¿Olvidaste tu contraseña?",
+    "forgotTitle": "Recupera tu acceso",
+    "forgotSub": "Escribe el correo con el que entras a Calisto y te enviamos un enlace para crear una contraseña nueva.",
+    "sendLink": "Enviar enlace",
+    "sendingLink": "Enviando…",
+    "sendLinkFailed": "No se pudo enviar el enlace. Vuelve a intentarlo en un momento; si sigue fallando, avisa al administrador del sistema.",
+    "sentTitle": "Revisa tu correo",
+    "sentSub": "Si esa dirección tiene una cuenta, acabamos de enviarle un enlace para restablecer la contraseña.",
+    "sentHint": "El enlace vence en una hora y solo puede usarse una vez. Si no lo ves, revisa la carpeta de spam o correo no deseado.",
+    "resend": "Enviar el enlace otra vez",
+    "resendIn": "Puedes reenviarlo en {{s}} s",
+    "backToLogin": "Volver a iniciar sesión"
+  },
+  "reset": {
+    "title": "Crea tu contraseña nueva",
+    "sub": "Estás restableciendo la contraseña de",
+    "subGeneric": "Elige la contraseña con la que entrarás a partir de ahora.",
+    "action": "Guardar contraseña",
+    "securityNote": "Al guardar, esta contraseña reemplaza la anterior y el enlace del correo deja de funcionar.",
+    "doneTitle": "¡Listo!",
+    "doneSub": "Tu contraseña quedó actualizada. Entrando a Calisto…",
+    "expiredTitle": "Este enlace ya no sirve",
+    "expiredSub": "Los enlaces de restablecimiento vencen en una hora y solo pueden usarse una vez. Pide uno nuevo desde la pantalla de inicio de sesión.",
+    "askAnother": "Pedir un enlace nuevo"
+  },
+  "password": {
+    "strength0": "Muy débil",
+    "strength1": "Débil",
+    "strength2": "Aceptable",
+    "strength3": "Fuerte",
+    "strength4": "Excelente",
+    "reqLength": "8 caracteres o más",
+    "reqCase": "Mayúscula y minúscula",
+    "reqNumber": "Un número",
+    "reqSymbol": "Un símbolo"
   },
   "firstLogin": {
     "title": "Define tu contraseña",

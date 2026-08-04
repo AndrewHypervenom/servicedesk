@@ -6,9 +6,11 @@ import { puedeVerRuta } from '@/lib/roles';
 import { AppLayout } from '@/components/layout/AppLayout';
 import { ToastHost } from '@/components/ui/Toast';
 import { ActualizacionDisponible } from '@/components/ActualizacionDisponible';
+import { MascotaCalisto } from '@/components/marca/Calisto';
 import { useDetectorDeVersion } from '@/lib/actualizacion';
 import { Login } from '@/pages/Login';
 import { DefinirPassword } from '@/pages/DefinirPassword';
+import { RestablecerPassword } from '@/pages/RestablecerPassword';
 import { Dashboard } from '@/pages/Dashboard';
 import { Analitica } from '@/pages/Analitica';
 import { Solicitudes } from '@/pages/Solicitudes';
@@ -35,7 +37,7 @@ function Guard({ children }: { children: ReactElement }) {
 }
 
 export default function App() {
-  const { perfil, loading, init } = useApp();
+  const { perfil, loading, init, recuperando } = useApp();
 
   useEffect(() => { init(); }, [init]);
 
@@ -44,8 +46,19 @@ export default function App() {
 
   if (loading) {
     return (
-      <div className="min-h-screen grid place-items-center bg-ink-50 dark:bg-ink-900">
-        <div className="w-10 h-10 rounded-full border-2 border-brand-500 border-t-transparent animate-spin" />
+      <div className="min-h-screen grid place-items-center bg-ink-50 dark:bg-ink-900 overflow-hidden">
+        <div className="aurora opacity-70" aria-hidden><span /><span /></div>
+        <div className="relative z-10 flex flex-col items-center gap-6">
+          <MascotaCalisto className="w-[8.5rem]" paralaje={0} />
+          <div className="text-center">
+            <div className="text-xl font-bold tracking-tight wordmark">Calisto</div>
+            {/* Barra indeterminada en vez de un aro: ocupa el mismo ancho que
+                el nombre y no compite con el flote de la mascota. */}
+            <div className="mt-3 h-1 w-32 mx-auto rounded-full bg-ink-200/70 dark:bg-white/10 overflow-hidden">
+              <div className="h-full w-1/3 rounded-full bg-gradient-to-r from-brand-500 to-magenta-500 animate-carga" />
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
@@ -54,7 +67,16 @@ export default function App() {
     <BrowserRouter>
       <ToastHost />
       <ActualizacionDisponible />
-      {!perfil ? (
+      {/* Va antes que todo lo demás, incluso antes de comprobar la sesión: el
+          enlace del correo SÍ crea sesión, así que sin esta rama el usuario
+          aterrizaría en el Dashboard y nunca vería el formulario que vino a
+          usar. Y si el enlace caducó no hay sesión, pero hay que explicarlo en
+          esta pantalla en vez de soltarlo en el login sin contexto. */}
+      {recuperando ? (
+        <Routes>
+          <Route path="*" element={<RestablecerPassword />} />
+        </Routes>
+      ) : !perfil ? (
         <Routes>
           <Route path="*" element={<Login />} />
         </Routes>

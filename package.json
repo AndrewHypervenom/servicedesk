@@ -1,9 +1,9 @@
 {
-  "name": "service-desk-inventario",
+  "name": "calisto",
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Módulo de Inventario y Movimiento de Equipos — Service Desk Positivo S+",
+  "description": "Calisto — Inventario y Movimiento de Equipos · Service Desk Positivo S+",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",

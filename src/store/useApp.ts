@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { supabase } from '@/lib/supabase';
+import { enlaceRecuperacion, limpiarUrlRecuperacion } from '@/lib/recuperacion';
 import { ROLES_EDICION } from '@/lib/roles';
 import i18n from '@/i18n';
 import type { Perfil, RolUsuario } from '@/types';
@@ -13,6 +14,17 @@ interface AppState {
   /** Todas las sedes de esos países: es el alcance real de la persona. */
   misSedes: string[];
   loading: boolean;
+  /**
+   * La sesión actual viene de un enlace de "restablecer contraseña", así que la
+   * app se queda en esa pantalla en vez de entrar al inventario: el enlace del
+   * correo da acceso sin saber la contraseña, y ese acceso solo sirve para
+   * definir una nueva.
+   */
+  recuperando: boolean;
+  /** Motivo por el que el enlace no sirve (caducado o ya usado), si lo hay. */
+  errorRecuperacion: string | null;
+  /** Termina el modo recuperación y devuelve el control a la app normal. */
+  cerrarRecuperacion: () => void;
   theme: Theme;
   idioma: string;
   /** Menú lateral reducido a solo iconos (escritorio). Se recuerda entre visitas. */
@@ -66,6 +78,8 @@ export const useApp = create<AppState>((set, get) => ({
   misPaises: [],
   misSedes: [],
   loading: true,
+  recuperando: enlaceRecuperacion.activo,
+  errorRecuperacion: enlaceRecuperacion.error,
   theme: (localStorage.getItem('theme') as Theme) || 'system',
   idioma: localStorage.getItem('idioma') || 'es',
   navColapsado: localStorage.getItem('navColapsado') === '1',
@@ -74,11 +88,20 @@ export const useApp = create<AppState>((set, get) => ({
     applyTheme(get().theme);
     const { data } = await supabase.auth.getSession();
     if (data.session) set(await cargarPerfil(data.session.user.id));
-    supabase.auth.onAuthStateChange(async (_e, session) => {
+    supabase.auth.onAuthStateChange(async (evento, session) => {
+      // Respaldo para el flujo implícito: si el token llegó en el hash, el
+      // cliente ya lo consumió y avisa por aquí. `enlaceRecuperacion` cubre el
+      // caso PKCE, donde este evento no llega nunca.
+      if (evento === 'PASSWORD_RECOVERY') set({ recuperando: true, errorRecuperacion: null });
       if (session) set(await cargarPerfil(session.user.id));
       else set({ perfil: null, misSedes: [], misPaises: [] });
     });
     set({ loading: false });
+  },
+
+  cerrarRecuperacion: () => {
+    limpiarUrlRecuperacion();
+    set({ recuperando: false, errorRecuperacion: null });
   },
 
   updatePerfil: async (patch) => {

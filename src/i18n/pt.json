@@ -1,6 +1,6 @@
 {
   "app": {
-    "name": "Service Desk",
+    "name": "Calisto",
     "subtitle": "Inventário e Rastreabilidade"
   },
   "nav": {
@@ -141,7 +141,42 @@
     "featureI18n": "Español · Português · API aberta",
     "showPassword": "Mostrar senha",
     "hidePassword": "Ocultar senha",
-    "secureConnection": "Conexão criptografada · Sessão protegida"
+    "secureConnection": "Conexão criptografada · Sessão protegida",
+    "forgotPassword": "Esqueceu sua senha?",
+    "forgotTitle": "Recupere seu acesso",
+    "forgotSub": "Digite o e-mail com o qual você entra no Calisto e enviaremos um link para criar uma nova senha.",
+    "sendLink": "Enviar link",
+    "sendingLink": "Enviando…",
+    "sendLinkFailed": "Não foi possível enviar o link. Tente novamente em instantes; se continuar falhando, avise o administrador do sistema.",
+    "sentTitle": "Verifique seu e-mail",
+    "sentSub": "Se esse endereço tiver uma conta, acabamos de enviar um link para redefinir a senha.",
+    "sentHint": "O link expira em uma hora e só pode ser usado uma vez. Se não aparecer, verifique a pasta de spam ou lixo eletrônico.",
+    "resend": "Enviar o link novamente",
+    "resendIn": "Você pode reenviar em {{s}} s",
+    "backToLogin": "Voltar para o login"
+  },
+  "reset": {
+    "title": "Crie sua nova senha",
+    "sub": "Você está redefinindo a senha de",
+    "subGeneric": "Escolha a senha com a qual você vai entrar a partir de agora.",
+    "action": "Salvar senha",
+    "securityNote": "Ao salvar, esta senha substitui a anterior e o link do e-mail deixa de funcionar.",
+    "doneTitle": "Pronto!",
+    "doneSub": "Sua senha foi atualizada. Entrando no Calisto…",
+    "expiredTitle": "Este link não é mais válido",
+    "expiredSub": "Os links de redefinição expiram em uma hora e só podem ser usados uma vez. Peça um novo na tela de login.",
+    "askAnother": "Pedir um novo link"
+  },
+  "password": {
+    "strength0": "Muito fraca",
+    "strength1": "Fraca",
+    "strength2": "Aceitável",
+    "strength3": "Forte",
+    "strength4": "Excelente",
+    "reqLength": "8 caracteres ou mais",
+    "reqCase": "Maiúscula e minúscula",
+    "reqNumber": "Um número",
+    "reqSymbol": "Um símbolo"
   },
   "firstLogin": {
     "title": "Defina sua senha",

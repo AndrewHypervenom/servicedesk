@@ -11,6 +11,7 @@ import { contarSolicitudesPendientes } from '@/lib/api';
 import { useApp } from '@/store/useApp';
 import { RUTA_ROLES } from '@/lib/roles';
 import { Tooltip } from '@/components/ui/Tooltip';
+import { IconoCalisto } from '@/components/marca/Calisto';
 import clsx from 'clsx';
 import type { RolUsuario } from '@/types';
 
@@ -120,15 +121,16 @@ export function Sidebar({ open, onClose, colapsado, onToggle }: Props) {
           PLEGADO,
           colapsado ? 'gap-3 px-5 lg:gap-0 lg:px-[1.55rem]' : 'gap-3 px-5',
         )}>
-          <div className="w-9 h-9 shrink-0 rounded-xl bg-gradient-to-br from-brand-500 to-brand-700
-                          grid place-items-center text-white shadow-sm">
-            <Boxes size={18} />
-          </div>
+          {/* La mascota es la marca: en el riel aparece como icono de app y
+              devuelve un saludo corto al pasar el ratón. */}
+          <motion.div whileHover={{ scale: 1.08, rotate: -4 }} transition={{ type: 'spring', damping: 11, stiffness: 260 }}>
+            <IconoCalisto size={36} />
+          </motion.div>
           <div className={clsx(
             'leading-tight overflow-hidden whitespace-nowrap', PLEGADO,
             colapsado ? 'max-w-[10rem] opacity-100 lg:max-w-0 lg:opacity-0' : 'max-w-[10rem] opacity-100',
           )}>
-            <div className="font-semibold text-sm">{t('app.name')}</div>
+            <div className="font-bold text-[15px] tracking-tight wordmark">{t('app.name')}</div>
             <div className="text-[11px] text-ink-400">{t('app.subtitle')}</div>
           </div>
           <button onClick={onClose} className="btn-ghost !p-2 ml-auto lg:hidden"><X size={18} /></button>
