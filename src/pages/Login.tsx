@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/store/useApp';
 import { supabase } from '@/lib/supabase';
+import { RUTA_RECUPERACION } from '@/lib/recuperacion';
 import { toast } from '@/components/ui/Toast';
 import { AuthShell, MarcaMovil } from '@/components/layout/AuthShell';
 
@@ -17,7 +18,7 @@ type Vista = 'entrar' | 'recuperar' | 'enviado';
 
 export function Login() {
   const { t } = useTranslation();
-  const { signIn, idioma } = useApp();
+  const { signIn } = useApp();
 
   const [vista, setVista] = useState<Vista>('entrar');
   const [email, setEmail] = useState('');
@@ -57,6 +58,30 @@ export function Login() {
     } finally { setBusy(false); }
   };
 
+  /**
+   * Pide el enlace de restablecimiento por el camino nativo de Supabase.
+   *
+   * Hubo una edge function (`enviar-reset`) que mandaba el correo con la marca
+   * de Calisto por Resend, pero Resend sólo entrega desde un dominio propio
+   * verificado y aquí no hay ninguno: la app vive en un subdominio de Vercel.
+   * Sin ese dominio la función no puede enviar nada, así que el correo lo manda
+   * Supabase con su plantilla de fábrica. Feo, pero llega y no depende de
+   * ninguna clave de API que se pueda quedar sin poner.
+   *
+   * Para que el enlace vuelva a la app, `${RUTA_RECUPERACION}` tiene que estar
+   * en las Redirect URLs del panel de Auth; si no, Supabase manda a la Site URL.
+   */
+  const pedirEnlaceAlServidor = async (correo: string) => {
+    const { error: err } = await supabase.auth.resetPasswordForEmail(correo, {
+      redirectTo: `${window.location.origin}${RUTA_RECUPERACION}`,
+    });
+    // No hay plan B: si esto falla, la persona tiene que saberlo.
+    if (err) {
+      console.error('resetPasswordForEmail', err);
+      throw new Error(err.message || t('auth.sendLinkFailed'));
+    }
+  };
+
   // Sirve tanto al submit del formulario como al botón "reenviar", de ahí el
   // tipo genérico del evento.
   const pedirEnlace = async (e: React.SyntheticEvent) => {
@@ -64,27 +89,7 @@ export function Login() {
     setBusy(true);
     setError(null);
     try {
-      // No se usa `supabase.auth.resetPasswordForEmail`: ese camino manda la
-      // plantilla de Auth, que el panel no deja editar mientras el proyecto use
-      // el SMTP de cortesía. La edge function genera el mismo enlace y lo envía
-      // por Resend dentro del correo con la marca de Calisto.
-      const { data, error: err } = await supabase.functions.invoke('enviar-reset', {
-        body: { correo: email.trim(), idioma, origen: window.location.origin },
-      });
-      // Ante un 429 o un 502, `invoke` devuelve un error genérico
-      // ("non-2xx status code") y deja el cuerpo real dentro de `context`. Sin
-      // desenvolverlo, el "pediste demasiados enlaces" que escribe la función
-      // no llegaría nunca a la pantalla.
-      if (err) {
-        const detalle = await (err as any).context?.json?.().catch(() => null);
-        // Lo que escribe la función ya está redactado para leerse; lo que sale
-        // de la librería ("Failed to send a request to the Edge Function") no
-        // dice nada a quien solo quiere volver a entrar, así que se guarda en la
-        // consola y a la pantalla va una frase útil.
-        if (!detalle?.error) console.error('enviar-reset', err);
-        throw new Error(detalle?.error ?? t('auth.sendLinkFailed'));
-      }
-      if (data?.error) throw new Error(data.error);
+      await pedirEnlaceAlServidor(email.trim());
       finEspera.current = Date.now() + ESPERA_REENVIO * 1000;
       setEspera(ESPERA_REENVIO);
       setVista('enviado');
