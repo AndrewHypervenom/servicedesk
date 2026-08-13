@@ -29,7 +29,7 @@ export function Proveedores() {
   const [open, setOpen] = useState(false);
   const [editando, setEditando] = useState<Proveedor | null>(null);
   const [q, setQ] = useState('');
-  const puedeCrear = can('ADMIN', 'LIDER', 'JEFE_SEDE');
+  const puedeCrear = can('ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO');
 
   const filtrados = useMemo(() => {
     const term = q.trim().toLowerCase();

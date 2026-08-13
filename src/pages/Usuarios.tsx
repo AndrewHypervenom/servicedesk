@@ -30,12 +30,11 @@ const rolColor: Record<RolUsuario, string> = {
 
 /**
  * Roles con alcance geográfico. Se asignan por PAÍS y cubren todas las sedes de
- * ese país: el Líder de sede puede tener varios países, el Técnico solo uno.
- * El Administrador y el Jefe (LIDER) no se limitan por país.
+ * ese país: tanto el Líder de sede como el Técnico pueden tener varios países
+ * (mismos permisos; el nombre solo dice quién manda en la sede). El
+ * Administrador y el Jefe (LIDER) no se limitan por país.
  */
 const rolPorPais = (r: RolUsuario) => r === 'JEFE_SEDE' || r === 'TECNICO';
-/** Cuántos países admite el rol; el Técnico opera en uno solo. */
-const maxPaises = (r: RolUsuario) => (r === 'TECNICO' ? 1 : undefined);
 const paisOption = (p: Pais): SelectOption =>
   ({ value: p.id, label: p.codigo ? `${p.nombre} (${p.codigo})` : p.nombre });
 
@@ -66,10 +65,8 @@ export function Usuarios() {
   const change = async (id: string, rol: RolUsuario) => {
     try {
       await updateRol(id, rol);
-      // Al pasar a Técnico solo puede quedar un país: se recorta aquí para que
-      // la base no rechace la siguiente edición con "solo puede tener un país".
+      // Los roles sin alcance geográfico (ADMIN / Jefe) no conservan países.
       const actuales = paisesPorPerfil[id] ?? [];
-      if (rol === 'TECNICO' && actuales.length > 1) await setPaisesDePerfil(id, [actuales[0]]);
       if (!rolPorPais(rol) && actuales.length) await setPaisesDePerfil(id, []);
       toast.success(t('common.success'));
     } catch (e: any) {
@@ -203,13 +200,7 @@ function EditarUsuarioModal({ perfil, paises, asignados, onClose, onSaved }:
   const esYo = perfil?.id === yo?.id;
   const set = (k: keyof typeof f, v: string | boolean) => setF((s) => ({ ...s, [k]: v }));
 
-  // Al cambiar de rol se recorta la selección a lo que el nuevo rol admite: un
-  // Técnico con dos países guardaría un cambio que la base rechaza.
-  const cambiarRol = (r: RolUsuario) => {
-    set('rol', r);
-    const tope = maxPaises(r);
-    if (tope) setPaisIds((prev) => prev.slice(0, tope));
-  };
+  const cambiarRol = (r: RolUsuario) => set('rol', r);
 
   const guardar = async () => {
     if (!f.nombre.trim()) { toast.error(t('form.requiredFields')); return; }
@@ -264,10 +255,9 @@ function EditarUsuarioModal({ perfil, paises, asignados, onClose, onSaved }:
             {paises.length === 0
               ? <p className="text-xs text-warning">{t('users.noPaises')}</p>
               : <MultiSelect values={paisIds} onChange={setPaisIds} options={paises.map(paisOption)}
-                  placeholder={t('users.selectPaises')} max={maxPaises(f.rol)}
-                  maxHint={t('users.unSoloPaisTecnico')} />}
+                  placeholder={t('users.selectPaises')} />}
             <p className="text-[11px] text-ink-400 mt-1 leading-snug">
-              {f.rol === 'TECNICO' ? t('users.paisHintTecnico') : t('users.paisHintJefeSede')}
+              {t('users.paisHintJefeSede')}
             </p>
           </div>
         )}
@@ -448,8 +438,6 @@ function PaisesUsuario({ perfil, paises, sedes, asignados, onSaved }:
         disabled={busy || paises.length === 0}
         options={paises.map(paisOption)}
         placeholder={paises.length ? t('users.selectPaises') : t('users.noPaises')}
-        max={maxPaises(perfil.rol)}
-        maxHint={t('users.unSoloPaisTecnico')}
         className="!py-1.5 text-xs"
       />
       {sel.length > 0 && (
@@ -468,11 +456,7 @@ function NuevoUsuarioModal({ open, onClose, onSaved, paises }: { open: boolean; 
   const [cred, setCred] = useState<{ link: string; email: string; password: string } | null>(null);
   const set = (k: keyof typeof vacio, v: string) => setF((prev) => ({ ...prev, [k]: v }));
 
-  const cambiarRol = (r: RolUsuario) => {
-    set('rol', r);
-    const tope = maxPaises(r);
-    if (tope) setPaisIds((prev) => prev.slice(0, tope));
-  };
+  const cambiarRol = (r: RolUsuario) => set('rol', r);
 
   const cerrar = () => { setF(vacio); setPaisIds([]); setCred(null); onClose(); };
 
@@ -531,10 +515,9 @@ function NuevoUsuarioModal({ open, onClose, onSaved, paises }: { open: boolean; 
                 {paises.length === 0
                   ? <p className="text-xs text-warning">{t('users.noPaises')}</p>
                   : <MultiSelect values={paisIds} onChange={setPaisIds} options={paises.map(paisOption)}
-                      placeholder={t('users.selectPaises')} max={maxPaises(f.rol)}
-                      maxHint={t('users.unSoloPaisTecnico')} />}
+                      placeholder={t('users.selectPaises')} />}
                 <p className="text-[11px] text-ink-400 mt-1 leading-snug">
-                  {f.rol === 'TECNICO' ? t('users.paisHintTecnico') : t('users.paisHintJefeSede')}
+                  {t('users.paisHintJefeSede')}
                 </p>
               </div>
             )}

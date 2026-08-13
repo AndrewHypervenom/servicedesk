@@ -7,17 +7,17 @@ export const RUTA_ROLES: Record<string, RolUsuario[]> = {
   '/devolucion': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
   '/escanear': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
   '/colaboradores': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
-  '/proveedores': ['ADMIN', 'LIDER', 'JEFE_SEDE'],
-  '/reporte-proveedor': ['ADMIN', 'LIDER', 'JEFE_SEDE'],
+  '/proveedores': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
+  '/reporte-proveedor': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
   '/sedes': ['ADMIN'],
   '/integraciones': ['ADMIN'],
-  // El Líder de sede (JEFE_SEDE) no gestiona usuarios: no ve la pantalla de
-  // Usuarios, ni los roles, ni a los técnicos. Solo ADMIN y LIDER (Jefe) entran.
+  // Ni el Líder de sede (JEFE_SEDE) ni el Técnico gestionan usuarios: no ven la
+  // pantalla de Usuarios, ni los roles, ni a los demás. Solo ADMIN y LIDER (Jefe).
   '/usuarios': ['ADMIN', 'LIDER'],
-  // Analítica: ADMIN y LIDER ven el parque completo; el JEFE_SEDE también entra,
-  // pero la propia pantalla aplica `scopeEquipos`, así que ve solo los KPIs y
-  // gráficos de SU sede. TECNICO queda fuera (solo opera, no analiza).
-  '/analitica': ['ADMIN', 'LIDER', 'JEFE_SEDE'],
+  // Analítica: ADMIN y LIDER ven el parque completo; JEFE_SEDE y TECNICO también
+  // entran, pero la propia pantalla aplica `scopeEquipos`, así que ven solo los
+  // KPIs y gráficos de SUS sedes.
+  '/analitica': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
   // Solo el ADMIN resuelve solicitudes de borrado; si el solicitante pudiera
   // aprobarlas, la aprobación no significaría nada.
   '/solicitudes': ['ADMIN'],
@@ -29,14 +29,15 @@ export const RUTA_ROLES: Record<string, RolUsuario[]> = {
 /**
  * Quién puede retirar registros de la vista.
  *
- * TECNICO queda fuera a propósito: solo edita. Estas comprobaciones son de
- * interfaz — deciden si se pinta el botón — y NO son la barrera de seguridad.
- * Lo que de verdad impide la acción son las políticas RLS y los triggers de
- * `sql/01-borrado-suave.sql`, porque un usuario puede llamar a la API REST de
- * Supabase sin pasar por esta pantalla.
+ * El TECNICO tiene las mismas capacidades que el JEFE_SEDE: la diferencia entre
+ * ambos es de jerarquía (quién manda en la sede), no de permisos. Estas
+ * comprobaciones son de interfaz — deciden si se pinta el botón — y NO son la
+ * barrera de seguridad. Lo que de verdad impide la acción son las políticas RLS
+ * y los triggers de borrado suave, porque un usuario puede llamar a la API REST
+ * de Supabase sin pasar por esta pantalla.
  */
 export function puedeBorrar(rol: RolUsuario | undefined): boolean {
-  return rol === 'ADMIN' || rol === 'LIDER' || rol === 'JEFE_SEDE';
+  return rol === 'ADMIN' || rol === 'LIDER' || rol === 'JEFE_SEDE' || rol === 'TECNICO';
 }
 
 /**
@@ -44,7 +45,7 @@ export function puedeBorrar(rol: RolUsuario | undefined): boolean {
  * administrador debe resolver. El ADMIN oculta y resuelve sin intermediarios.
  */
 export function borradoRequiereAprobacion(rol: RolUsuario | undefined): boolean {
-  return rol === 'LIDER' || rol === 'JEFE_SEDE';
+  return rol === 'LIDER' || rol === 'JEFE_SEDE' || rol === 'TECNICO';
 }
 
 export function esAdmin(rol: RolUsuario | undefined): boolean {

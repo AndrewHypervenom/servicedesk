@@ -362,7 +362,7 @@
     "ADMIN": "Controle total: todas as unidades, usuários, integrações e configuração.",
     "LIDER": "Tudo operacional em todas as cidades. Não altera configuração nem usuários.",
     "JEFE_SEDE": "Gerencia inventário, movimentos e relatórios das unidades dos seus países.",
-    "TECNICO": "Atribui, devolve e registra movimentos nas unidades do seu país."
+    "TECNICO": "Mesmas funções do Líder de unidade nas unidades dos seus países; a liderança da unidade é do Líder."
   },
   "inventory": {
     "title": "Inventário de equipamentos",
@@ -545,9 +545,7 @@
     "todosLosPaises": "Todos os países",
     "sinPais": "Sem país",
     "noPaises": "Ainda não há países. Crie-os na seção Unidades.",
-    "unSoloPaisTecnico": "Um técnico opera em um único país. Marque outro para substituí-lo.",
     "sedesCubiertas": "Cobre {{n}} unidade(s)",
-    "paisHintTecnico": "Opera em todas as unidades do seu país.",
     "paisHintJefeSede": "Opera em todas as unidades dos países marcados. Pode ter vários.",
     "searchPlaceholder": "Buscar por nome, e-mail, documento ou função…",
     "newUser": "Novo usuário",

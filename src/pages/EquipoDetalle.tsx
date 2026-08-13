@@ -29,7 +29,7 @@ export function EquipoDetalle() {
   const [colab, setColab] = useState<Colaborador | null>(null);
   const [editar, setEditar] = useState(false);
   const [cambiarEstado, setCambiarEstado] = useState(false);
-  const puedeEditar = can('ADMIN', 'LIDER', 'JEFE_SEDE');
+  const puedeEditar = can('ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO');
 
   const { data: equipo, isLoading, refetch } = useQuery({ queryKey: ['equipo', id], queryFn: () => getEquipo(id) });
   const { data: movs = [], refetch: refetchMovs } = useQuery({ queryKey: ['traz', id], queryFn: () => trazabilidad(id) });

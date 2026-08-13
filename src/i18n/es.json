@@ -362,7 +362,7 @@
     "ADMIN": "Control total: todas las sedes, usuarios, integraciones y configuración.",
     "LIDER": "Todo lo operativo en todas las ciudades. No toca configuración ni usuarios.",
     "JEFE_SEDE": "Gestiona inventario, movimientos y reportes de las sedes de sus países.",
-    "TECNICO": "Asigna, devuelve y registra movimientos en las sedes de su país."
+    "TECNICO": "Mismas funciones que el Líder de sede en las sedes de sus países; el liderazgo de la sede es del Líder."
   },
   "inventory": {
     "title": "Inventario de equipos",
@@ -545,9 +545,7 @@
     "todosLosPaises": "Todos los países",
     "sinPais": "Sin país",
     "noPaises": "Aún no hay países. Créalos en la sección Sedes.",
-    "unSoloPaisTecnico": "Un técnico opera en un solo país. Marca otro para reemplazarlo.",
     "sedesCubiertas": "Cubre {{n}} sede(s)",
-    "paisHintTecnico": "Opera en todas las sedes de su país.",
     "paisHintJefeSede": "Opera en todas las sedes de los países que marques. Puede tener varios.",
     "searchPlaceholder": "Buscar por nombre, correo, cédula o rol…",
     "newUser": "Nuevo usuario",

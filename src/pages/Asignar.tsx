@@ -28,7 +28,7 @@ export function Asignar() {
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
   const disponibles = equipos.filter((e) => e.estado_asignacion === 'DISPONIBLE');
   // Mandar a mantenimiento es un cambio de estado: mismos roles que en la ficha.
-  const puedeReparar = can('ADMIN', 'LIDER', 'JEFE_SEDE');
+  const puedeReparar = can('ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO');
 
   const [step, setStep] = useState(0);
   const [cedula, setCedula] = useState('');

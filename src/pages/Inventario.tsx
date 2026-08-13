@@ -29,7 +29,7 @@ export function Inventario() {
   const { canEdit, can, perfil, misSedes } = useApp();
   const { data: equiposRaw = [], refetch, isLoading } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
   const equipos = useMemo(() => scopeEquipos(equiposRaw, perfil, misSedes), [equiposRaw, perfil, misSedes]);
-  const puedeEditar = can('ADMIN', 'LIDER', 'JEFE_SEDE');
+  const puedeEditar = can('ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO');
 
   const [q, setQ] = useState('');
   const [fEstado, setFEstado] = useState('');

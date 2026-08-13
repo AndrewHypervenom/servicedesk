@@ -107,7 +107,7 @@ export function Colaboradores() {
   const { canEdit, can } = useApp();
   // La carga masiva la autoriza el RPC solo a estos tres roles; el Técnico
   // edita fichas sueltas pero no reemplaza la planta entera.
-  const puedeCargarBase = can('ADMIN', 'LIDER', 'JEFE_SEDE');
+  const puedeCargarBase = can('ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO');
 
   const { data: colabs = [], refetch, isLoading } = useQuery({
     queryKey: ['colabs'], queryFn: listColaboradores,
