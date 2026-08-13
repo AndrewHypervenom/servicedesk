@@ -48,8 +48,8 @@ export function EquipoDetalle() {
   if (isLoading) return (
     <div>
       <Skeleton className="h-9 w-32 mb-6" />
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 card p-6 space-y-4">
+      <div className="grid lg:grid-cols-3 gap-4 sm:gap-6">
+        <div className="lg:col-span-2 card p-4 sm:p-6 space-y-4">
           <div className="flex items-center gap-4">
             <Skeleton className="w-14 h-14 rounded-2xl shrink-0" />
             <div className="flex-1 space-y-2">
@@ -59,7 +59,7 @@ export function EquipoDetalle() {
           </div>
           <SkeletonText lines={6} />
         </div>
-        <div className="card p-6 space-y-4">
+        <div className="card p-4 sm:p-6 space-y-4">
           <Skeleton className="h-40 w-40 mx-auto rounded-xl" />
           <SkeletonText lines={3} />
         </div>
@@ -105,118 +105,121 @@ export function EquipoDetalle() {
 
       {coeditores.length > 0 && <CoeditBanner peers={coeditores} className="mb-4" />}
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-6">
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="card p-6">
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h1 className="text-2xl font-bold">{equipo.marca} {equipo.linea_modelo}</h1>
-                  <EstadoBadge estado={equipo.estado_asignacion} label={t(`estadoAsig.${equipo.estado_asignacion}`)} />
-                  <FisicoBadge estado={equipo.estado_fisico} label={t(`estadoFis.${equipo.estado_fisico}`)} />
-                </div>
-                <p className="text-ink-400 mt-1">{equipo.descripcion_completa}</p>
-                <div className="text-xs text-ink-400 font-mono mt-2">{equipo.codigo_qr}</div>
+      {/* En el móvil el orden no es el del escritorio: al llegar aquí desde el
+          escáner lo primero que se busca es quién tiene el equipo, no su
+          historial — y el QR sobra, que se acaba de escanear. La barra lateral
+          se coloca entre la ficha y la trazabilidad, y dentro de ella las
+          tarjetas se invierten (`order`) para dejar el QR de últimas. */}
+      <div className="grid lg:grid-cols-3 gap-4 sm:gap-6 lg:items-start">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="card p-4 sm:p-6 lg:col-span-2">
+          <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 sm:gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-xl sm:text-2xl font-bold break-words">{equipo.marca} {equipo.linea_modelo}</h1>
+                <EstadoBadge estado={equipo.estado_asignacion} label={t(`estadoAsig.${equipo.estado_asignacion}`)} />
+                <FisicoBadge estado={equipo.estado_fisico} label={t(`estadoFis.${equipo.estado_fisico}`)} />
               </div>
-              {puedeEditar && (
-                <div className="flex gap-2 shrink-0">
-                  <button onClick={() => setCambiarEstado(true)} className="btn-secondary">
-                    <Wrench size={16} /> {t('equipo.cambiarEstado')}
-                  </button>
-                  <button onClick={() => setEditar(true)} className="btn-secondary">
-                    <Pencil size={16} /> {t('common.edit')}
-                  </button>
-                </div>
-              )}
+              <p className="text-sm sm:text-base text-ink-400 mt-1 break-words">{equipo.descripcion_completa}</p>
+              <div className="text-xs text-ink-400 font-mono mt-2 break-all">{equipo.codigo_qr}</div>
             </div>
-
-            <div className="grid sm:grid-cols-2 gap-x-8 gap-y-3 mt-6">
-              {infoRows.map(([k, v], idx) => (
-                <div key={idx} className="flex justify-between gap-3 py-2 border-b border-ink-50 dark:border-white/5">
-                  <span className="text-sm text-ink-400">{k}</span>
-                  <span className="text-sm font-medium text-right">{v}</span>
-                </div>
-              ))}
-            </div>
-
-            {/* Comentarios técnicos: panel propio para que no se pierdan entre los datos. */}
-            {equipo.observaciones && (
-              <div className="mt-5 rounded-xl border border-warning/25 bg-warning/[0.07] p-4">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <FileText size={15} className="text-amber-600 dark:text-warning shrink-0" />
-                  <span className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-warning">
-                    {t('equipo.observaciones')}
-                  </span>
-                </div>
-                <p className="text-sm text-ink-700 dark:text-ink-100 whitespace-pre-wrap leading-relaxed">
-                  {equipo.observaciones}
-                </p>
+            {puedeEditar && (
+              <div className="flex gap-2 sm:shrink-0">
+                <button onClick={() => setCambiarEstado(true)} className="btn-secondary flex-1 sm:flex-none">
+                  <Wrench size={16} /> {t('equipo.cambiarEstado')}
+                </button>
+                <button onClick={() => setEditar(true)} className="btn-secondary flex-1 sm:flex-none">
+                  <Pencil size={16} /> {t('common.edit')}
+                </button>
               </div>
             )}
-          </motion.div>
+          </div>
 
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="card p-6">
-            <div className="flex items-center gap-2 mb-5">
-              <History size={18} className="text-brand-500" />
-              <h3 className="font-semibold">{t('equipo.traceability')}</h3>
-            </div>
-
-            {movs.length === 0 ? (
-              <p className="text-sm text-ink-400 py-6 text-center">{t('equipo.noMovements')}</p>
-            ) : (
-              <div className="relative pl-6">
-                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-ink-100 dark:bg-white/10" />
-                {movs.map((m, i) => (
-                  <motion.div key={m.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
-                    className="relative pb-6 last:pb-0">
-                    <div className="absolute -left-6 top-1 w-3.5 h-3.5 rounded-full bg-brand-500 ring-4 ring-brand-500/15" />
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-medium text-sm">{t(`movimiento.${m.tipo_movimiento}`)}</span>
-                      <span className="text-xs text-ink-400">{fmtDate(m.fecha, i18n.language)}</span>
-                    </div>
-                    <div className="text-sm text-ink-500 mt-1 space-y-0.5">
-                      {m.nombre_destino && <div>→ {m.nombre_destino}{m.proyecto_destino && ` · ${m.proyecto_destino}`}</div>}
-                      {m.nombre_origen && <div>← {m.nombre_origen}</div>}
-                      {m.proveedor && <div>Proveedor: {m.proveedor}</div>}
-                      {m.estado_anterior && m.estado_nuevo && (
-                        <div className="text-xs text-ink-400">{t(`estadoAsig.${m.estado_anterior}`)} → {t(`estadoAsig.${m.estado_nuevo}`)}</div>
-                      )}
-                      {m.observaciones && <div className="text-xs italic">{m.observaciones}</div>}
-                    </div>
-                  </motion.div>
-                ))}
+          <div className="grid sm:grid-cols-2 gap-x-8 gap-y-1 sm:gap-y-3 mt-5 sm:mt-6">
+            {infoRows.map(([k, v], idx) => (
+              <div key={idx} className="flex justify-between items-baseline gap-3 py-2 border-b border-ink-50 dark:border-white/5">
+                <span className="text-sm text-ink-400 shrink-0">{k}</span>
+                <span className="text-sm font-medium text-right min-w-0 break-words">{v}</span>
               </div>
-            )}
-          </motion.div>
-        </div>
+            ))}
+          </div>
 
-        <div className="space-y-6">
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="card p-6 text-center">
+          {/* Comentarios técnicos: panel propio para que no se pierdan entre los datos. */}
+          {equipo.observaciones && (
+            <div className="mt-5 rounded-xl border border-warning/25 bg-warning/[0.07] p-4">
+              <div className="flex items-center gap-2 mb-1.5">
+                <FileText size={15} className="text-amber-600 dark:text-warning shrink-0" />
+                <span className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-warning">
+                  {t('equipo.observaciones')}
+                </span>
+              </div>
+              <p className="text-sm text-ink-700 dark:text-ink-100 whitespace-pre-wrap leading-relaxed">
+                {equipo.observaciones}
+              </p>
+            </div>
+          )}
+        </motion.div>
+
+        <div className="flex flex-col gap-4 sm:gap-6 lg:row-span-2">
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="order-1 lg:order-2 card p-4 sm:p-6">
+            <div className="flex items-center gap-2 text-sm font-semibold text-ink-500 mb-3"><User size={16} /> {t('equipo.assignedTo')}</div>
+            {colab ? (
+              <div className="space-y-2">
+                <div className="font-medium break-words">{colab.nombre}</div>
+                <div className="text-sm text-ink-400 flex items-center gap-2"><ShieldCheck size={14} className="shrink-0" /> C.C. {colab.cedula}</div>
+                {colab.cargo && <div className="text-sm text-ink-400 flex items-start gap-2"><Cpu size={14} className="shrink-0 mt-0.5" /> <span className="min-w-0 break-words">{colab.cargo}</span></div>}
+                {colab.proyecto && <div className="text-sm text-ink-400 flex items-start gap-2"><Building2 size={14} className="shrink-0 mt-0.5" /> <span className="min-w-0 break-words">{colab.proyecto}</span></div>}
+                {colab.lider && <div className="text-sm text-ink-400 flex items-start gap-2"><User size={14} className="shrink-0 mt-0.5" /> <span className="min-w-0 break-words">{colab.lider}</span></div>}
+                {colab.sede && <div className="text-sm text-ink-400 flex items-start gap-2"><MapPin size={14} className="shrink-0 mt-0.5" /> <span className="min-w-0 break-words">{colab.sede}</span></div>}
+              </div>
+            ) : <p className="text-sm text-ink-400">{t('equipo.unassigned')}</p>}
+          </motion.div>
+
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="order-2 lg:order-1 card p-4 sm:p-6 text-center">
             <div className="flex items-center justify-center gap-2 text-sm font-semibold text-ink-500 mb-3">
               <QrCode size={16} /> {t('equipo.codigoQr')}
             </div>
-            {qr && <img src={qr} alt="QR" className="w-44 h-44 mx-auto rounded-2xl border border-ink-100 dark:border-white/10 p-2 bg-white" />}
-            <div className="font-mono text-sm mt-3">{equipo.codigo_qr}</div>
+            {qr && <img src={qr} alt="QR" className="w-36 h-36 sm:w-44 sm:h-44 mx-auto rounded-2xl border border-ink-100 dark:border-white/10 p-2 bg-white" />}
+            <div className="font-mono text-sm mt-3 break-all">{equipo.codigo_qr}</div>
             <div className="flex gap-2 mt-4">
               <button onClick={() => imprimirEtiquetaQr(equipo)} className="btn-secondary flex-1"><Printer size={16} /> {t('common.print')}</button>
               <button onClick={() => descargarQr(equipo)} className="btn-secondary flex-1"><Download size={16} /> PNG</button>
             </div>
           </motion.div>
-
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="card p-6">
-            <div className="flex items-center gap-2 text-sm font-semibold text-ink-500 mb-3"><User size={16} /> {t('equipo.assignedTo')}</div>
-            {colab ? (
-              <div className="space-y-2">
-                <div className="font-medium">{colab.nombre}</div>
-                <div className="text-sm text-ink-400 flex items-center gap-2"><ShieldCheck size={14} /> C.C. {colab.cedula}</div>
-                {colab.cargo && <div className="text-sm text-ink-400 flex items-center gap-2"><Cpu size={14} /> {colab.cargo}</div>}
-                {colab.proyecto && <div className="text-sm text-ink-400 flex items-center gap-2"><Building2 size={14} /> {colab.proyecto}</div>}
-                {colab.lider && <div className="text-sm text-ink-400 flex items-center gap-2"><User size={14} /> {colab.lider}</div>}
-                {colab.sede && <div className="text-sm text-ink-400 flex items-center gap-2"><MapPin size={14} /> {colab.sede}</div>}
-              </div>
-            ) : <p className="text-sm text-ink-400">{t('equipo.unassigned')}</p>}
-          </motion.div>
         </div>
+
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }} className="card p-4 sm:p-6 lg:col-span-2">
+          <div className="flex items-center gap-2 mb-5">
+            <History size={18} className="text-brand-500" />
+            <h3 className="font-semibold">{t('equipo.traceability')}</h3>
+          </div>
+
+          {movs.length === 0 ? (
+            <p className="text-sm text-ink-400 py-6 text-center">{t('equipo.noMovements')}</p>
+          ) : (
+            <div className="relative pl-6">
+              <div className="absolute left-[7px] top-2 bottom-2 w-px bg-ink-100 dark:bg-white/10" />
+              {movs.map((m, i) => (
+                <motion.div key={m.id} initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.05 }}
+                  className="relative pb-6 last:pb-0">
+                  <div className="absolute -left-6 top-1 w-3.5 h-3.5 rounded-full bg-brand-500 ring-4 ring-brand-500/15" />
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-medium text-sm">{t(`movimiento.${m.tipo_movimiento}`)}</span>
+                    <span className="text-xs text-ink-400">{fmtDate(m.fecha, i18n.language)}</span>
+                  </div>
+                  <div className="text-sm text-ink-500 mt-1 space-y-0.5">
+                    {m.nombre_destino && <div>→ {m.nombre_destino}{m.proyecto_destino && ` · ${m.proyecto_destino}`}</div>}
+                    {m.nombre_origen && <div>← {m.nombre_origen}</div>}
+                    {m.proveedor && <div>Proveedor: {m.proveedor}</div>}
+                    {m.estado_anterior && m.estado_nuevo && (
+                      <div className="text-xs text-ink-400">{t(`estadoAsig.${m.estado_anterior}`)} → {t(`estadoAsig.${m.estado_nuevo}`)}</div>
+                    )}
+                    {m.observaciones && <div className="text-xs italic">{m.observaciones}</div>}
+                  </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </motion.div>
       </div>
 
       {puedeEditar && (
