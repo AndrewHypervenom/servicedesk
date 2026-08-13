@@ -499,6 +499,7 @@
     "point": "Apunte al código QR del equipo",
     "notFound": "Equipo no encontrado para: {{code}}",
     "permission": "Se requiere permiso de cámara",
+    "error": "No se pudo consultar el equipo. Revise la conexión",
     "manual": "O ingrese el código / serial manualmente"
   },
   "supplierReport": {
