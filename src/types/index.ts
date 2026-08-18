@@ -95,6 +95,55 @@ export interface Colaborador {
   eliminado_por?: string | null;
 }
 
+/**
+ * Una línea móvil corporativa (SIM de Claro).
+ *
+ * Los nueve primeros campos son, uno a uno, las columnas del archivo que esta
+ * pantalla vino a reemplazar; se conservan con su forma original (texto libre,
+ * incluida `fecha_corte`, que en el archivo son frases y no fechas) para que la
+ * exportación devuelva exactamente el mismo formato. Lo demás es lo que el
+ * archivo no podía tener: sede, titular real y rastro de cambios.
+ */
+export interface LineaMovil {
+  id: string;
+  /**
+   * Null en las SIM que todavía no se han activado (la hoja "EMPAQUES NUEVOS"
+   * del libro): existen en el inventario, pero aún no tienen línea asignada.
+   * La identidad en ese caso es el ICCID — la base lo resuelve en `clave`.
+   */
+  numero: string | null;
+  iccid?: string | null;
+  /** El equipo, no la SIM. Solo lo trae la hoja "IMEI CELULARES SAMSUNG". */
+  imei?: string | null;
+  /** Identidad calculada por la base: el número, o "SIM:<iccid>" si no hay. */
+  clave?: string;
+  /** Hoja del libro de la que salió la línea. */
+  hoja_origen?: string | null;
+  estado?: string | null;
+  /** Titular tal como venía escrito en el archivo. */
+  nombre?: string | null;
+  cr?: string | null;
+  proyecto?: string | null;
+  observacion?: string | null;
+  fecha_corte?: string | null;
+  solicitud_claro?: string | null;
+  operador?: string | null;
+  /** Titular real: solo si esa persona existe en la planta (tiene FK). */
+  cedula_asignado?: string | null;
+  /**
+   * La cédula tal como venía en el archivo, sin FK. Las líneas suspendidas son
+   * de gente que ya no está en la planta, y su cédula sigue siendo el dato que
+   * dice de quién era la línea.
+   */
+  cedula_archivo?: string | null;
+  sede_id?: string | null;
+  creado_en?: string;
+  actualizado_en?: string | null;
+  creado_por?: string | null;
+  eliminado_en?: string | null;
+  eliminado_por?: string | null;
+}
+
 export interface Proveedor {
   id: string;
   nombre: string;
@@ -103,6 +152,68 @@ export interface Proveedor {
   correo?: string | null;
   telefono?: string | null;
   observacion?: string | null;
+  eliminado_en?: string | null;
+  eliminado_por?: string | null;
+}
+
+/**
+ * Una persona a la que se le puede atribuir un ticket.
+ *
+ * No es un `Perfil` recortado por comodidad: es todo lo que la base entrega del
+ * directorio (`analistas_de_mesa()`). El Líder de sede no puede leer la tabla
+ * `perfiles`, así que esto es lo único que tiene para enlazar — un nombre y un
+ * identificador, sin correo, rol ni sede.
+ */
+export interface AnalistaMesa {
+  id: string;
+  nombre: string;
+  /** Si no, solo sirve para leer un enlace ya hecho: ADMIN, cuenta de servicio o baja. */
+  seleccionable: boolean;
+}
+
+export type EstadoTicket = 'COMPLETADA' | 'EN_PROGRESO' | 'PENDIENTE' | 'BLOQUEADA';
+export type PrioridadTicket = 'ALTA' | 'MEDIA' | 'BAJA';
+
+/**
+ * Un renglón del control de tickets de la mesa de servicio.
+ *
+ * Es una fila del libro "CONTROL TICKETS.xlsx", que tenía una hoja por mes. El
+ * mes aquí es un campo (`periodo`), no una hoja: las cuatro hojas del archivo
+ * viven en la misma tabla y se filtran, no se abren.
+ *
+ * Los campos van en parejas allí donde el archivo traía texto libre y aquí hay
+ * un enlace real: `analista_id`/`analista_texto` y `sede_id`/`ciudad_texto`. El
+ * enlace es lo que se agrupa y se grafica; el texto es lo que decía el archivo,
+ * y se conserva para poder revisar un enlace mal hecho.
+ */
+export interface Ticket {
+  id: string;
+  /** Número de la mesa de servicio, "161116-1". No es único: el mismo ticket
+   *  puede traer dos tareas (una devolución y un retiro). */
+  ticket: string;
+  descripcion?: string | null;
+  estado: EstadoTicket;
+  prioridad?: PrioridadTicket | null;
+  fecha_inicio?: string | null;
+  fecha_fin?: string | null;
+  /** Días calendario entre inicio y fin. Lo calcula la base; no se escribe.
+   *  La identidad de una fila —lo que impide que la misma se cargue dos veces—
+   *  es ticket + descripción + fecha de inicio, y no vive en ninguna columna:
+   *  la impone un índice único (ver la migración). */
+  dias?: number | null;
+  /** Mes al que pertenece, 'AAAA-MM'. */
+  periodo?: string | null;
+  hoja_origen?: string | null;
+  analista_id?: string | null;
+  analista_texto?: string | null;
+  sede_id?: string | null;
+  ciudad_texto?: string | null;
+  /** Porcentaje de cumplimiento, 0–100. */
+  cumplimiento?: number | null;
+  notas?: string | null;
+  creado_en?: string;
+  actualizado_en?: string | null;
+  creado_por?: string | null;
   eliminado_en?: string | null;
   eliminado_por?: string | null;
 }

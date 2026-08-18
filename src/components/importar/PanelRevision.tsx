@@ -96,8 +96,9 @@ function DatoConflicto({ etiqueta, valor, distinto }: {
 
 function TarjetaConflicto({ conflicto, elegida, onElegir }: {
   conflicto: ConflictoSerial;
-  elegida: number | undefined;
-  onElegir: (fila: number) => void;
+  /** Clave `hoja#fila` de la versión elegida: la fila sola no identifica una versión. */
+  elegida: string | undefined;
+  onElegir: (clave: string) => void;
 }) {
   const { t } = useTranslation();
   // Solo se resalta lo que cambia entre versiones; lo idéntico no ayuda a decidir.
@@ -107,6 +108,10 @@ function TarjetaConflicto({ conflicto, elegida, onElegir }: {
     fisico: new Set(conflicto.opciones.map((o) => o.estado_fisico)).size > 1,
     usuario: new Set(conflicto.opciones.map((o) => o.usuario ?? '')).size > 1,
   }), [conflicto]);
+  // Si las versiones vienen de hojas distintas, el número de fila no basta para
+  // saber cuál es cuál: hay que decir también de qué hoja sale cada una.
+  const variasHojas = new Set(conflicto.opciones.map((o) => o.hoja)).size > 1;
+  const filaElegida = conflicto.opciones.find((o) => o.clave === elegida)?.fila;
 
   return (
     <div>
@@ -118,7 +123,7 @@ function TarjetaConflicto({ conflicto, elegida, onElegir }: {
               key="ok" initial={{ opacity: 0, x: -4 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0 }}
               className="badge bg-brand-500/15 text-brand-600 dark:text-brand-400"
             >
-              <Check size={11} /> {t('importRevision.resolvedRow', { fila: elegida })}
+              <Check size={11} /> {t('importRevision.resolvedRow', { fila: filaElegida })}
             </motion.span>
           ) : (
             <motion.span
@@ -132,11 +137,11 @@ function TarjetaConflicto({ conflicto, elegida, onElegir }: {
       </div>
       <div className="grid sm:grid-cols-2 gap-2">
         {conflicto.opciones.map((o) => {
-          const activa = elegida === o.fila;
+          const activa = elegida === o.clave;
           return (
             <motion.button
-              key={o.fila}
-              onClick={() => onElegir(o.fila)}
+              key={o.clave}
+              onClick={() => onElegir(o.clave)}
               whileTap={{ scale: 0.98 }}
               className={`text-left p-3.5 rounded-xl border transition-all duration-200 ${
                 activa
@@ -145,8 +150,9 @@ function TarjetaConflicto({ conflicto, elegida, onElegir }: {
               }`}
             >
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-400">
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-400 truncate">
                   {t('importRevision.rowOfExcel', { fila: o.fila })}
+                  {variasHojas && <span className="normal-case"> · {o.hoja.trim()}</span>}
                 </span>
                 <span className="ml-auto w-4 h-4">
                   {activa && <CheckPop size={15} />}
@@ -425,7 +431,7 @@ export function PanelRevision({ analisis, sedes, res, onRes }: Props) {
                 key={c.serial}
                 conflicto={c}
                 elegida={res.conflictos[c.serial]}
-                onElegir={(fila) => onRes({ ...res, conflictos: { ...res.conflictos, [c.serial]: fila } })}
+                onElegir={(clave) => onRes({ ...res, conflictos: { ...res.conflictos, [c.serial]: clave } })}
               />
             ))}
           </div>

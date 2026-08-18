@@ -9,8 +9,9 @@
  */
 
 import { normNombre } from './normalizar';
+import type { ModoExtra } from './tipos';
 
-/** Las cuatro hojas que el importador entiende. */
+/** Las cuatro clases de hoja que el importador entiende. */
 export type HojaId = 'BD_EQUIPOS' | 'ENTRADAS' | 'SALIDAS' | 'CLARO';
 
 export interface CampoDef {
@@ -111,17 +112,46 @@ export const HOJA_POR_ID: Record<HojaId, HojaDef> = Object.fromEntries(
 ) as Record<HojaId, HojaDef>;
 
 /**
- * Encuentra, dentro de los nombres de hoja del libro, cuál corresponde a cada hoja
- * conocida. Devuelve el nombre real (con sus tildes y espacios) o null.
+ * Qué clase de hoja es, a partir de su nombre. `null` = no se reconoció, y
+ * entonces es el usuario quien lo dice en el paso de mapeo.
+ *
+ * Se mira hoja por hoja (no "una hoja por clase"), así que un libro puede traer
+ * varias del mismo tipo: dos inventarios de sedes distintas, SALIDAS partidas
+ * por año, más de una hoja de comodato.
  */
-export function nombreRealDeHoja(def: HojaDef, nombresLibro: string[]): string | null {
-  if (def.contiene) {
-    const objetivo = normNombre(def.contiene);
-    const real = nombresLibro.find((n) => normNombre(n).includes(objetivo));
-    if (real) return real;
+export function tipoDeHoja(nombre: string): HojaId | null {
+  const n = normNombre(nombre);
+  if (!n) return null;
+
+  // Las reglas por "contiene" van primero: «EQUIPOS CLARO BOGOTA» es una hoja de
+  // comodato, no un inventario que empieza por EQUIPOS.
+  for (const def of HOJAS) {
+    if (def.contiene && n.includes(normNombre(def.contiene))) return def.id;
   }
-  const objetivos = def.nombres.map(normNombre);
-  return nombresLibro.find((n) => objetivos.includes(normNombre(n))) ?? null;
+  for (const def of HOJAS) {
+    if (def.nombres.some((x) => normNombre(x) === n)) return def.id;
+  }
+  // El nombre conocido seguido de algo más: «SALIDAS 2026», «BD_EQUIPOS MEDELLIN».
+  for (const def of HOJAS) {
+    if (def.nombres.some((x) => n.startsWith(`${normNombre(x)} `))) return def.id;
+  }
+  return null;
+}
+
+/** Propuesta de mapeo para una hoja: qué columna alimenta cada campo por defecto. */
+export function mapeoDeColumnas(def: HojaDef, columnas: string[]): {
+  campos: Record<string, string | null>;
+  extras: Record<string, ModoExtra>;
+} {
+  const campos: Record<string, string | null> = {};
+  for (const c of def.campos) campos[c.id] = null;
+  const extras: Record<string, ModoExtra> = {};
+  for (const col of columnas) {
+    const campoId = campoParaColumna(def, col);
+    if (campoId && campos[campoId] == null) campos[campoId] = col;
+    else extras[col] = 'IGNORAR';
+  }
+  return { campos, extras };
 }
 
 /** Para una columna dada, ¿qué campo la reclama por defecto? El primer alias que calce. */

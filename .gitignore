@@ -25,6 +25,8 @@ supabase
 # Datos de trabajo: no deben viajar en el repositorio
 BASE_EQUIPOS_PR.xlsx
 *.xlsx
+# El listado de líneas trae números y nombres reales, y llega en .csv
+*.csv
 
 # Claude
 .claude

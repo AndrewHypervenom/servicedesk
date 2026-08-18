@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import {
   LayoutDashboard, Boxes, UserPlus, Undo2, ScanLine, Users, FileSignature,
   Truck, PackageOpen, Plug, ShieldCheck, Settings, MapPin, X, ChartPie, ShieldQuestion, History,
-  ChevronLeft,
+  ChevronLeft, Smartphone, TicketCheck,
 } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { contarSolicitudesPendientes } from '@/lib/api';
@@ -20,6 +20,8 @@ interface Item {
   roles?: RolUsuario[];
   /** Contador que se pinta a la derecha; se omite si es 0. */
   distintivo?: number;
+  /** Pantalla de administración: se agrupa al final del menú, tras una línea. */
+  admin?: boolean;
 }
 
 interface Props {
@@ -52,26 +54,32 @@ export function Sidebar({ open, onClose, colapsado, onToggle }: Props) {
     refetchInterval: 60_000,
   });
 
+  // El día a día primero; la administración (lo que solo ve el ADMIN) al final,
+  // separada por una línea, para que el uso frecuente no quede debajo de
+  // pantallas que casi nadie abre.
   const items: Item[] = [
     { to: '/', icon: LayoutDashboard, label: t('nav.dashboard') },
     { to: '/analitica', icon: ChartPie, label: t('nav.analytics'), roles: RUTA_ROLES['/analitica'] },
     { to: '/colaboradores', icon: Users, label: t('nav.collaborators'), roles: RUTA_ROLES['/colaboradores'] },
     { to: '/inventario', icon: Boxes, label: t('nav.inventory') },
+    { to: '/lineas', icon: Smartphone, label: t('nav.lines'), roles: RUTA_ROLES['/lineas'] },
+    { to: '/tickets', icon: TicketCheck, label: t('nav.tickets'), roles: RUTA_ROLES['/tickets'] },
     { to: '/asignar', icon: UserPlus, label: t('nav.assign'), roles: RUTA_ROLES['/asignar'] },
     { to: '/devolucion', icon: Undo2, label: t('nav.return'), roles: RUTA_ROLES['/devolucion'] },
     { to: '/escanear', icon: ScanLine, label: t('nav.scan'), roles: RUTA_ROLES['/escanear'] },
     { to: '/actas', icon: FileSignature, label: t('nav.actas') },
     { to: '/proveedores', icon: Truck, label: t('nav.suppliers'), roles: RUTA_ROLES['/proveedores'] },
     { to: '/reporte-proveedor', icon: PackageOpen, label: t('nav.supplierReport'), roles: RUTA_ROLES['/reporte-proveedor'] },
-    { to: '/sedes', icon: MapPin, label: t('nav.sedes'), roles: RUTA_ROLES['/sedes'] },
-    { to: '/integraciones', icon: Plug, label: t('nav.integrations'), roles: RUTA_ROLES['/integraciones'] },
-    { to: '/usuarios', icon: ShieldCheck, label: t('nav.users'), roles: RUTA_ROLES['/usuarios'] },
-    { to: '/solicitudes', icon: ShieldQuestion, label: 'Solicitudes', roles: RUTA_ROLES['/solicitudes'], distintivo: pendientes },
-    { to: '/auditoria', icon: History, label: t('nav.audit'), roles: RUTA_ROLES['/auditoria'] },
     { to: '/ajustes', icon: Settings, label: t('nav.settings') },
+    { to: '/sedes', icon: MapPin, label: t('nav.sedes'), roles: RUTA_ROLES['/sedes'], admin: true },
+    { to: '/integraciones', icon: Plug, label: t('nav.integrations'), roles: RUTA_ROLES['/integraciones'], admin: true },
+    { to: '/usuarios', icon: ShieldCheck, label: t('nav.users'), roles: RUTA_ROLES['/usuarios'], admin: true },
+    { to: '/solicitudes', icon: ShieldQuestion, label: 'Solicitudes', roles: RUTA_ROLES['/solicitudes'], distintivo: pendientes, admin: true },
+    { to: '/auditoria', icon: History, label: t('nav.audit'), roles: RUTA_ROLES['/auditoria'], admin: true },
   ];
 
   const visible = items.filter((i) => !i.roles || (perfil && i.roles.includes(perfil.rol)));
+  const primerAdmin = visible.findIndex((i) => i.admin);
 
   return (
     <>
@@ -138,7 +146,7 @@ export function Sidebar({ open, onClose, colapsado, onToggle }: Props) {
 
         <nav className={clsx('flex-1 overflow-y-auto overflow-x-hidden py-4 space-y-0.5', PLEGADO,
           colapsado ? 'px-3 lg:px-[0.9rem]' : 'px-3')}>
-          {visible.map((i) => {
+          {visible.map((i, indice) => {
             const enlace = (
               <NavLink
                 key={i.to}
@@ -209,9 +217,22 @@ export function Sidebar({ open, onClose, colapsado, onToggle }: Props) {
             // Plegado, el icono solo no basta para saber a dónde lleva: el nombre
             // vuelve como tooltip. El componente solo se abre con ratón, así que
             // en el cajón táctil no estorba.
-            return colapsado
+            const item = colapsado
               ? <Tooltip key={i.to} label={i.label} className="!flex w-full">{enlace}</Tooltip>
               : enlace;
+
+            // Línea entre el día a día y la administración. Solo aparece si hay
+            // algo antes: si la persona no ve más que pantallas de admin, no hay
+            // nada que separar.
+            if (indice === primerAdmin && indice > 0) {
+              return (
+                <div key={`sep-${i.to}`}>
+                  <div className="my-2 mx-1 border-t border-white/30 dark:border-white/10" />
+                  {item}
+                </div>
+              );
+            }
+            return item;
           })}
         </nav>
 

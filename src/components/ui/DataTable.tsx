@@ -26,6 +26,14 @@ interface Props<T> {
   onSelectedChange?: (next: Set<string>) => void;
   /** Barra flotante de acciones masivas; recibe las filas seleccionadas. */
   bulkActions?: (rows: T[], clear: () => void) => React.ReactNode;
+  /**
+   * Abrir la fila. Con esto puesto, la fila entera es pulsable y no solo el
+   * enlace que lleve dentro: en una tabla de cosas que se consultan, obligar a
+   * apuntar a un texto de dos palabras es hacer trabajar al usuario para nada.
+   * Los controles que haya dentro (botones, enlaces, casillas) siguen siendo
+   * suyos: el clic sobre ellos no abre la fila.
+   */
+  onRowClick?: (row: T) => void;
   /** Alto máximo del área desplazable — lo que hace útil el header sticky. */
   maxHeight?: string;
   skeletonRows?: number;
@@ -43,6 +51,7 @@ export function DataTable<T>({
   selected,
   onSelectedChange,
   bulkActions,
+  onRowClick,
   maxHeight = 'calc(100vh - 340px)',
   skeletonRows = 8,
 }: Props<T>) {
@@ -156,8 +165,19 @@ export function DataTable<T>({
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: Math.min(i * 0.015, 0.25) }}
+                    onClick={onRowClick
+                      ? (e) => {
+                        // Un clic sobre un control de dentro es para ese
+                        // control. Se mira el objetivo en vez de pedir
+                        // `stopPropagation` en cada botón de cada columna:
+                        // olvidarlo en uno solo abre la ficha al borrar.
+                        if ((e.target as HTMLElement).closest('button,a,input,label,select,textarea')) return;
+                        onRowClick(row);
+                      }
+                      : undefined}
                     className={clsx(
                       'border-b border-ink-50 dark:border-white/5',
+                      onRowClick && 'cursor-pointer',
                       // Solo color y sombra: un `transform` en <tr> se comporta
                       // de forma dispar entre navegadores y descoloca tanto los
                       // bordes de celda como el header sticky.

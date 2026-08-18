@@ -1,12 +1,13 @@
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Trans, useTranslation } from 'react-i18next';
-import { ShieldCheck, UserPlus, Copy, Check, Pencil, Trash2, AlertTriangle, UserX, SearchX } from 'lucide-react';
+import { ShieldCheck, UserPlus, Copy, Check, Pencil, Trash2, AlertTriangle, UserX, SearchX, KeyRound, LogIn } from 'lucide-react';
 import {
   listPerfiles, updateRol, crearUsuario, listSedes, listPaises,
   listPaisesPorPerfil, setPaisesDePerfil, actualizarPerfil, eliminarUsuario,
+  estadoAcceso, regenerarCredenciales,
 } from '@/lib/api';
-import { esAdmin } from '@/lib/roles';
+import { esAdmin, rolesQuePuedeCrear } from '@/lib/roles';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Select, type SelectOption } from '@/components/ui/Select';
 import { MultiSelect } from '@/components/ui/MultiSelect';
@@ -16,7 +17,7 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
-import { initials } from '@/lib/format';
+import { initials, fmtDateTime } from '@/lib/format';
 import { useApp } from '@/store/useApp';
 import type { Pais, Perfil, RolUsuario, Sede } from '@/types';
 
@@ -40,27 +41,49 @@ const paisOption = (p: Pais): SelectOption =>
 
 export function Usuarios() {
   const { t } = useTranslation();
+  const { perfil: yo } = useApp();
+  const soyAdmin = esAdmin(yo?.rol);
+  // El Jefe (LIDER) da de alta equipo, pero no administradores: la lista de
+  // roles del alta se recorta a lo que él puede crear.
+  const rolesAlta = rolesQuePuedeCrear(yo?.rol);
   const { data: perfiles = [], refetch, isLoading } = useQuery({ queryKey: ['perfiles'], queryFn: listPerfiles });
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
   const { data: paises = [] } = useQuery({ queryKey: ['paises'], queryFn: listPaises });
   const { data: paisesPorPerfil = {}, refetch: refetchPaises } = useQuery({
     queryKey: ['perfil-paises'], queryFn: listPaisesPorPerfil,
   });
+  // Quién ha entrado alguna vez. Solo lo ve el administrador: para el resto la
+  // función responde 403 y la lista se queda sin la columna, que es lo correcto.
+  const { data: accesos = {}, refetch: refetchAccesos } = useQuery({
+    queryKey: ['accesos'], queryFn: estadoAcceso, enabled: soyAdmin,
+  });
   const [nuevo, setNuevo] = useState(false);
   const [editando, setEditando] = useState<Perfil | null>(null);
   const [q, setQ] = useState('');
-  const { perfil: yo } = useApp();
-  const soyAdmin = esAdmin(yo?.rol);
+  const [soloPendientes, setSoloPendientes] = useState(false);
+
+  /**
+   * Falta por ingresar por primera vez.
+   *
+   * El dato bueno es `last_sign_in_at` de Auth; mientras no llegue (función sin
+   * desplegar, o el usuario no es admin) se cae a `debe_cambiar_password`, que
+   * se pone al crear la cuenta y se quita al definir la contraseña propia.
+   */
+  const pendiente = (p: Perfil) =>
+    Object.keys(accesos).length ? accesos[p.id] == null : !!p.debe_cambiar_password;
+
+  const nPendientes = useMemo(() => perfiles.filter(pendiente).length, [perfiles, accesos]);
 
   const filtrados = useMemo(() => {
     const term = q.trim().toLowerCase();
-    if (!term) return perfiles;
-    return perfiles.filter((p) =>
+    const base = soloPendientes ? perfiles.filter(pendiente) : perfiles;
+    if (!term) return base;
+    return base.filter((p) =>
       [p.nombre, p.correo, p.cedula, t(`rol.${p.rol}`)]
         .some((v) => v?.toLowerCase().includes(term)));
-  }, [perfiles, q, t]);
+  }, [perfiles, q, t, soloPendientes, accesos]);
 
-  const recargar = () => { refetch(); refetchPaises(); };
+  const recargar = () => { refetch(); refetchPaises(); refetchAccesos(); };
 
   const change = async (id: string, rol: RolUsuario) => {
     try {
@@ -78,9 +101,12 @@ export function Usuarios() {
   return (
     <div>
       <PageHeader title={t('users.title')} subtitle={t('users.subtitle')} icon={ShieldCheck}
-        action={<Button variant="primary" icon={UserPlus} onClick={() => setNuevo(true)}>{t('users.newUser')}</Button>} />
+        action={rolesAlta.length > 0
+          ? <Button variant="primary" icon={UserPlus} onClick={() => setNuevo(true)}>{t('users.newUser')}</Button>
+          : undefined} />
 
-      <NuevoUsuarioModal open={nuevo} onClose={() => setNuevo(false)} onSaved={recargar} paises={paises} />
+      <NuevoUsuarioModal open={nuevo} onClose={() => setNuevo(false)} onSaved={recargar}
+        paises={paises} rolesAlta={rolesAlta} />
       <EditarUsuarioModal perfil={editando} paises={paises} asignados={editando ? paisesPorPerfil[editando.id] ?? [] : []}
         onClose={() => setEditando(null)} onSaved={recargar} />
 
@@ -94,8 +120,18 @@ export function Usuarios() {
       </div>
 
       {!isLoading && perfiles.length > 0 && (
-        <div className="card p-4 mb-5">
+        <div className="card p-4 mb-5 space-y-3">
           <SearchInput value={q} onChange={setQ} placeholder={t('users.searchPlaceholder')} />
+          {/* El contador solo aparece si hay a quién perseguir: un cero fijo en
+              pantalla no informa de nada. */}
+          {nPendientes > 0 && (
+            <button onClick={() => setSoloPendientes((v) => !v)}
+              className={`badge transition-colors ${soloPendientes
+                ? 'bg-warning text-white'
+                : 'bg-warning/15 text-amber-700 dark:text-warning hover:bg-warning/25'}`}>
+              <LogIn size={12} /> {soloPendientes ? t('users.pendingAll') : t('users.pendingOnly', { n: nPendientes })}
+            </button>
+          )}
         </div>
       )}
 
@@ -128,9 +164,22 @@ export function Usuarios() {
                     {p.id === yo?.id && (
                       <span className="badge bg-brand-500/15 text-brand-600 dark:text-brand-300">{t('users.you')}</span>
                     )}
+                    {p.activo && pendiente(p) && (
+                      <span className="badge bg-warning/15 text-amber-700 dark:text-warning"
+                        title={t('users.pendingLoginHint')}>
+                        <LogIn size={11} /> {t('users.pendingLogin')}
+                      </span>
+                    )}
                   </div>
                 </td>
-                <td className="px-4 py-3 text-ink-500">{p.correo}</td>
+                <td className="px-4 py-3 text-ink-500">
+                  {p.correo}
+                  {accesos[p.id] && (
+                    <div className="text-[11px] text-ink-400">
+                      {t('users.lastLogin', { fecha: fmtDateTime(accesos[p.id]) })}
+                    </div>
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   {soyAdmin ? (
                     <Select
@@ -151,6 +200,7 @@ export function Usuarios() {
                 </td>
                 {soyAdmin && (
                   <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {pendiente(p) && p.activo && <Credenciales perfil={p} onDone={recargar} />}
                     <button onClick={() => setEditando(p)} title={t('users.editUser')}
                       className="btn-ghost !p-1.5"><Pencil size={15} /></button>
                     <BorrarUsuario perfil={p} esYo={p.id === yo?.id} onDone={recargar} />
@@ -165,7 +215,9 @@ export function Usuarios() {
             icon={ShieldCheck}
             title={t('users.emptyTitle')}
             description={t('users.emptyDesc')}
-            action={<Button variant="primary" icon={UserPlus} onClick={() => setNuevo(true)}>{t('users.newUser')}</Button>}
+            action={rolesAlta.length > 0
+              ? <Button variant="primary" icon={UserPlus} onClick={() => setNuevo(true)}>{t('users.newUser')}</Button>
+              : undefined}
           />
         )}
         {!isLoading && perfiles.length > 0 && filtrados.length === 0 && (
@@ -301,6 +353,73 @@ function EditarUsuarioModal({ perfil, paises, asignados, onClose, onSaved }:
         </Button>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Credenciales de quien todavía no ha ingresado.
+ *
+ * No es «volver a ver» la contraseña: Auth guarda solo el hash, así que la
+ * temporal que se mostró al crear la cuenta ya no existe en ninguna parte. Lo
+ * único posible es generar otra, y por eso se avisa antes de hacerlo. Solo se
+ * ofrece a quien nunca entró: a quien ya tiene su propia contraseña se le
+ * manda un correo de restablecer, no se le cambia por detrás.
+ */
+function Credenciales({ perfil, onDone }: { perfil: Perfil; onDone: () => void }) {
+  const { t } = useTranslation();
+  const [abierto, setAbierto] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [cred, setCred] = useState<{ link: string; email: string; password: string } | null>(null);
+
+  const cerrar = () => { setAbierto(false); setCred(null); };
+
+  const generar = async () => {
+    setBusy(true);
+    try {
+      const r = await regenerarCredenciales(perfil.id);
+      setCred({ link: window.location.origin, email: r.email, password: r.password });
+      onDone();
+    } catch (e: any) {
+      toast.error(e?.message ?? t('common.error'));
+    } finally { setBusy(false); }
+  };
+
+  return (
+    <>
+      <button onClick={() => setAbierto(true)} title={t('users.regenerate')}
+        className="btn-ghost !p-1.5 text-amber-600 dark:text-warning"><KeyRound size={15} /></button>
+
+      <Modal open={abierto} onClose={() => !busy && cerrar()} size="sm"
+        title={cred ? t('users.newCredentials', { nombre: perfil.nombre }) : t('users.regenerate')}
+        subtitle={cred ? t('users.newCredentialsHint') : perfil.nombre}>
+        {cred ? (
+          <div className="space-y-3">
+            <CredRow label={t('users.link')} value={cred.link} />
+            <CredRow label={t('auth.email')} value={cred.email} />
+            <CredRow label={t('users.tempPassword')} value={cred.password} mono />
+            <CopyAll cred={cred} />
+            <div className="flex justify-end mt-4">
+              <button className="btn-primary" onClick={cerrar}>{t('common.done')}</button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-start gap-3 p-3 rounded-xl bg-warning/10 border border-warning/25">
+              <AlertTriangle size={18} className="text-warning shrink-0 mt-0.5" />
+              <div className="text-sm leading-snug">
+                <Trans i18nKey="users.regenerateWarn" components={[<strong />]} />
+              </div>
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button disabled={busy} onClick={cerrar}>{t('common.cancel')}</Button>
+              <Button variant="primary" loading={busy} onClick={generar}>
+                <KeyRound size={15} /> {t('users.regenerateDo')}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+    </>
   );
 }
 
@@ -447,7 +566,8 @@ function PaisesUsuario({ perfil, paises, sedes, asignados, onSaved }:
   );
 }
 
-function NuevoUsuarioModal({ open, onClose, onSaved, paises }: { open: boolean; onClose: () => void; onSaved: () => void; paises: Pais[] }) {
+function NuevoUsuarioModal({ open, onClose, onSaved, paises, rolesAlta }:
+  { open: boolean; onClose: () => void; onSaved: () => void; paises: Pais[]; rolesAlta: RolUsuario[] }) {
   const { t } = useTranslation();
   const vacio = { nombre: '', email: '', rol: 'TECNICO' as RolUsuario, cedula: '' };
   const [f, setF] = useState(vacio);
@@ -462,6 +582,7 @@ function NuevoUsuarioModal({ open, onClose, onSaved, paises }: { open: boolean; 
 
   const guardar = async () => {
     if (!f.nombre || !f.email) { toast.error(t('form.requiredFields')); return; }
+    if (!rolesAlta.includes(f.rol)) { toast.error(t('users.noPuedeCrearAdmin')); return; }
     if (rolPorPais(f.rol) && paisIds.length === 0) { toast.error(t('users.paisRequired')); return; }
     setBusy(true);
     try {
@@ -507,7 +628,11 @@ function NuevoUsuarioModal({ open, onClose, onSaved, paises }: { open: boolean; 
             </div>
             <div>
               <label className="label">{t('users.role')}</label>
-              <Select value={f.rol} onChange={(v) => cambiarRol(v as RolUsuario)} options={ROLES.map((r) => ({ value: r, label: t(`rol.${r}`), description: t(`rolDesc.${r}`) }))} />
+              <Select value={f.rol} onChange={(v) => cambiarRol(v as RolUsuario)}
+                options={rolesAlta.map((r) => ({ value: r, label: t(`rol.${r}`), description: t(`rolDesc.${r}`) }))} />
+              {!rolesAlta.includes('ADMIN') && (
+                <p className="text-[11px] text-ink-400 mt-1 leading-snug">{t('users.noPuedeCrearAdmin')}</p>
+              )}
             </div>
             {rolPorPais(f.rol) && (
               <div className="sm:col-span-2">

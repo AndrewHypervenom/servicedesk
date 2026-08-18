@@ -1,9 +1,9 @@
 import { supabase } from './supabase';
 import { tipoMovimientoEstado } from './estados';
 import type {
-  Equipo, Colaborador, Proveedor, Movimiento, Acta, Perfil, Integracion,
+  Equipo, Colaborador, Proveedor, Movimiento, Acta, Perfil, Integracion, LineaMovil,
   TipoMovimiento, EstadoAsignacion, RolUsuario, Pais, Sede, Marca,
-  EntidadBorrable, SolicitudBorrado, RegistroAuditoria, TecnicoActa,
+  EntidadBorrable, SolicitudBorrado, RegistroAuditoria, TecnicoActa, Ticket, AnalistaMesa,
 } from '@/types';
 
 // El filtro `eliminado_en is null` se repite en cliente aunque RLS ya lo aplica.
@@ -235,6 +235,264 @@ export async function actualizarColaborador(cedula: string, c: Partial<Colaborad
   if (error) throw error;
 }
 
+// ═══ Líneas móviles · SIM corporativas ═══════════════════════════════════
+// El inventario de líneas vive en `lineas_moviles` (ver la migración
+// supabase/migrations/20260813_lineas_moviles.sql). La llave de negocio es el
+// número: el ICCID cambia cada vez que se repone la SIM.
+
+const PAGINA_LINEAS = 1000;
+
+/** Todas las líneas visibles, paginadas como la planta (PostgREST corta en 1.000). */
+export async function listLineas(): Promise<LineaMovil[]> {
+  const todas: LineaMovil[] = [];
+  for (let desde = 0; ; desde += PAGINA_LINEAS) {
+    // Por `clave` y no por `numero`: las SIM en empaque no tienen número, y
+    // ordenar por una columna con nulos deja el orden a merced del planificador
+    // (y con él, la paginación: una fila podría salir dos veces o ninguna).
+    const { data, error } = await supabase.from('lineas_moviles').select('*')
+      .is('eliminado_en', null)
+      .order('clave')
+      .range(desde, desde + PAGINA_LINEAS - 1);
+    if (error) throw error;
+    const bloque = (data as LineaMovil[]) ?? [];
+    todas.push(...bloque);
+    if (bloque.length < PAGINA_LINEAS) return todas;
+  }
+}
+
+/** Las líneas que hoy tiene una persona. Para su ficha de colaborador. */
+export async function lineasDeColaborador(cedula: string): Promise<LineaMovil[]> {
+  const { data, error } = await supabase.from('lineas_moviles').select('*')
+    .eq('cedula_asignado', cedula)
+    .is('eliminado_en', null)
+    .order('clave');
+  if (error) throw error;
+  return (data as LineaMovil[]) ?? [];
+}
+
+/** '' -> null: un campo vacío no es un valor, y así no choca con los índices. */
+const limpiarLinea = (l: Partial<LineaMovil>): Partial<LineaMovil> => {
+  const out: Record<string, unknown> = { ...l };
+  for (const [k, v] of Object.entries(out)) {
+    if (typeof v === 'string') out[k] = v.trim() === '' ? null : v.trim();
+  }
+  return out as Partial<LineaMovil>;
+};
+
+// `clave` la calcula la base (columna generada) y no admite escritura: si se
+// envía, PostgREST devuelve un error. Se quita aquí y no en cada llamada.
+const sinCalculados = (l: Partial<LineaMovil>): Partial<LineaMovil> => {
+  const { clave: _c, ...resto } = l;
+  return resto;
+};
+
+export async function crearLinea(l: Partial<LineaMovil>): Promise<LineaMovil> {
+  const { data, error } = await supabase.from('lineas_moviles')
+    .insert(limpiarLinea(sinCalculados(l))).select().single();
+  if (error) throw error;
+  return data as LineaMovil;
+}
+
+export async function actualizarLinea(id: string, patch: Partial<LineaMovil>): Promise<void> {
+  const { id: _omit, creado_en: _omit2, ...campos } = sinCalculados(patch);
+  const { error } = await supabase.from('lineas_moviles')
+    .update(limpiarLinea(campos)).eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * Retira una línea de la vista sin borrarla (borrado suave).
+ *
+ * A diferencia de equipos y colaboradores, esto NO abre una solicitud: la cola
+ * de `solicitudes_borrado` solo admite esas tres entidades por restricción de
+ * la tabla. Una línea retirada la recupera el ADMIN, que es quien sigue
+ * viéndola (lo garantiza la política `lineas_leer`).
+ */
+export async function ocultarLinea(id: string, perfilId: string): Promise<void> {
+  const { error } = await supabase.from('lineas_moviles')
+    .update({ eliminado_en: new Date().toISOString(), eliminado_por: perfilId })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+/** Devuelve a la vista una línea retirada. Solo el ADMIN las ve para restaurarlas. */
+export async function restaurarLinea(id: string): Promise<void> {
+  const { error } = await supabase.from('lineas_moviles')
+    .update({ eliminado_en: null, eliminado_por: null }).eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * ¿Esta identidad ya está registrada?
+ *
+ * La identidad es el número; y si la SIM aún no tiene número (empaques), el
+ * ICCID. Es la misma regla que aplica la columna generada `clave` de la base,
+ * comprobada aquí antes de guardar para poder explicar el choque en vez de
+ * soltar un error de unicidad.
+ */
+export async function lineaExiste(
+  p: { numero?: string | null; iccid?: string | null }, excluirId?: string,
+): Promise<boolean> {
+  const clave = p.numero?.trim() || (p.iccid?.trim() ? `SIM:${p.iccid.trim()}` : '');
+  if (!clave) return false;
+  let q = supabase.from('lineas_moviles').select('id').eq('clave', clave).limit(1);
+  if (excluirId) q = q.neq('id', excluirId);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data ?? []).length > 0;
+}
+
+export interface ResultadoCargaLineas {
+  creados: number;
+  actualizados: number;
+  recibidos: number;
+  /** Filas que llegaron sin número y sin ICCID: no había qué guardar. */
+  omitidos?: number;
+}
+
+/**
+ * Carga masiva de líneas. Va contra el RPC `importar_lineas`, que resuelve cada
+ * lote en una transacción; se trocea para no armar un JSON gigante en una sola
+ * petición y para que la barra de progreso avance de verdad entre lotes.
+ */
+export async function importarLineas(
+  filas: Record<string, unknown>[],
+  onProgreso?: (hechas: number, total: number) => void,
+  tamanoLote = 300,
+): Promise<ResultadoCargaLineas> {
+  const total: ResultadoCargaLineas = { creados: 0, actualizados: 0, recibidos: 0, omitidos: 0 };
+  for (let i = 0; i < filas.length; i += tamanoLote) {
+    const lote = filas.slice(i, i + tamanoLote);
+    const { data, error } = await supabase.rpc('importar_lineas', { p_filas: lote });
+    if (error) throw error;
+    const r = (data ?? {}) as Partial<ResultadoCargaLineas>;
+    total.creados += r.creados ?? 0;
+    total.actualizados += r.actualizados ?? 0;
+    total.recibidos += r.recibidos ?? lote.length;
+    total.omitidos = (total.omitidos ?? 0) + (r.omitidos ?? 0);
+    onProgreso?.(Math.min(i + tamanoLote, filas.length), filas.length);
+  }
+  return total;
+}
+
+// ═══ Control de tickets ══════════════════════════════════════════════════
+// Los tickets viven en `tickets` (ver la migración
+// supabase/migrations/20260818_tickets.sql). `dias` es una columna generada por
+// la base: se lee, nunca se escribe. Que la misma fila no se cargue dos veces lo
+// garantiza un índice único sobre ticket + descripción + fecha de inicio.
+
+/**
+ * El directorio de analistas de la mesa.
+ *
+ * Va por RPC y no por `select` a `perfiles` a propósito: la RLS de esa tabla no
+ * deja que el Líder de sede lea a los demás, y sin esto le salía una lista
+ * vacía justo cuando tenía que enlazar. La función devuelve solo id, nombre y
+ * si la persona puede figurar como analista. Ver la migración
+ * supabase/migrations/20260818_analistas_de_mesa.sql.
+ */
+export async function listAnalistasMesa(): Promise<AnalistaMesa[]> {
+  const { data, error } = await supabase.rpc('analistas_de_mesa');
+  if (error) throw error;
+  return (data as AnalistaMesa[]) ?? [];
+}
+
+const PAGINA_TICKETS = 1000;
+
+/** Todos los tickets visibles. Paginado: PostgREST corta en 1.000 filas. */
+export async function listTickets(): Promise<Ticket[]> {
+  const todos: Ticket[] = [];
+  for (let desde = 0; ; desde += PAGINA_TICKETS) {
+    // Por `id`: es único y nunca falta. Ordenar por fecha de inicio —que sí
+    // puede faltar— dejaría el orden a merced del planificador y con él la
+    // paginación, y una fila podría salir dos veces o ninguna. El orden que se
+    // ve en pantalla lo decide la propia vista.
+    const { data, error } = await supabase.from('tickets').select('*')
+      .is('eliminado_en', null)
+      .order('id')
+      .range(desde, desde + PAGINA_TICKETS - 1);
+    if (error) throw error;
+    const bloque = (data as Ticket[]) ?? [];
+    todos.push(...bloque);
+    if (bloque.length < PAGINA_TICKETS) return todos;
+  }
+}
+
+/** '' -> null y sin las columnas que calcula la base. */
+const limpiarTicket = (t: Partial<Ticket>): Partial<Ticket> => {
+  const { dias: _d, id: _i, creado_en: _ce, ...resto } = t;
+  const out: Record<string, unknown> = { ...resto };
+  for (const [k, v] of Object.entries(out)) {
+    // Las notas conservan sus saltos de línea: son texto largo, no una etiqueta.
+    if (typeof v === 'string') out[k] = v.trim() === '' ? null : (k === 'notas' ? v : v.trim());
+  }
+  return out as Partial<Ticket>;
+};
+
+export async function crearTicket(t: Partial<Ticket>): Promise<Ticket> {
+  const { data, error } = await supabase.from('tickets')
+    .insert(limpiarTicket(t)).select().single();
+  if (error) throw error;
+  return data as Ticket;
+}
+
+export async function actualizarTicket(id: string, patch: Partial<Ticket>): Promise<void> {
+  const { error } = await supabase.from('tickets').update(limpiarTicket(patch)).eq('id', id);
+  if (error) throw error;
+}
+
+/**
+ * Retira un ticket de la vista sin borrarlo (borrado suave).
+ *
+ * Como en líneas móviles, esto NO abre una solicitud: la cola de
+ * `solicitudes_borrado` solo admite equipos, colaboradores y proveedores. Un
+ * ticket retirado lo sigue viendo el ADMIN, que es quien puede restaurarlo.
+ */
+export async function ocultarTicket(id: string, perfilId: string): Promise<void> {
+  const { error } = await supabase.from('tickets')
+    .update({ eliminado_en: new Date().toISOString(), eliminado_por: perfilId })
+    .eq('id', id);
+  if (error) throw error;
+}
+
+export async function restaurarTicket(id: string): Promise<void> {
+  const { error } = await supabase.from('tickets')
+    .update({ eliminado_en: null, eliminado_por: null }).eq('id', id);
+  if (error) throw error;
+}
+
+export interface ResultadoCargaTickets {
+  creados: number;
+  actualizados: number;
+  recibidos: number;
+  /** Filas que llegaron sin número de ticket: no había con qué identificarlas. */
+  omitidos?: number;
+}
+
+/**
+ * Carga masiva de tickets, un mes o varios. Va contra el RPC `importar_tickets`,
+ * que resuelve cada lote en una transacción; se trocea para que la barra de
+ * progreso avance de verdad y para no armar un JSON de mil filas de una vez.
+ */
+export async function importarTickets(
+  filas: Record<string, unknown>[],
+  onProgreso?: (hechas: number, total: number) => void,
+  tamanoLote = 300,
+): Promise<ResultadoCargaTickets> {
+  const total: ResultadoCargaTickets = { creados: 0, actualizados: 0, recibidos: 0, omitidos: 0 };
+  for (let i = 0; i < filas.length; i += tamanoLote) {
+    const lote = filas.slice(i, i + tamanoLote);
+    const { data, error } = await supabase.rpc('importar_tickets', { p_filas: lote });
+    if (error) throw error;
+    const r = (data ?? {}) as Partial<ResultadoCargaTickets>;
+    total.creados += r.creados ?? 0;
+    total.actualizados += r.actualizados ?? 0;
+    total.recibidos += r.recibidos ?? lote.length;
+    total.omitidos = (total.omitidos ?? 0) + (r.omitidos ?? 0);
+    onProgreso?.(Math.min(i + tamanoLote, filas.length), filas.length);
+  }
+  return total;
+}
+
 export async function listProveedores(): Promise<Proveedor[]> {
   const { data } = await supabase.from('proveedores').select('*')
     .is('eliminado_en', null).order('nombre');
@@ -419,11 +677,28 @@ export async function updateSedeUsuario(id: string, sedeId: string | null): Prom
   if (error) throw error;
 }
 
+/**
+ * Cabecera de autorización con el token de la sesión, refrescado si hacía falta.
+ *
+ * `functions.invoke` reutiliza el token que el cliente tenía en memoria; si la
+ * pestaña estuvo dormida y ese token caducó, la Edge Function recibe algo que
+ * ya no identifica a nadie y responde 401 «No autenticado». Pedir la sesión
+ * aquí fuerza el refresco antes de llamar, y si de verdad no hay sesión se
+ * avisa con un mensaje entendible en vez de con un 401 del servidor.
+ */
+async function cabeceraAuth(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession();
+  const token = data.session?.access_token;
+  if (!token) throw new Error('La sesión ha caducado. Vuelva a iniciar sesión e inténtelo de nuevo.');
+  return { Authorization: `Bearer ${token}` };
+}
+
 export async function crearUsuario(p: {
   email: string; nombre: string; rol: RolUsuario;
   cedula?: string; paisIds?: string[];
 }): Promise<{ email: string; password: string }> {
   const { data, error } = await supabase.functions.invoke('crear-usuario', {
+    headers: await cabeceraAuth(),
     body: { email: p.email, nombre: p.nombre, rol: p.rol, cedula: p.cedula, pais_ids: p.paisIds ?? [] },
   });
   if (error) {
@@ -458,13 +733,53 @@ export async function actualizarPerfil(id: string, patch: {
  * el último administrador activo o si es uno mismo.
  */
 export async function eliminarUsuario(id: string): Promise<void> {
-  const { data, error } = await supabase.functions.invoke('eliminar-usuario', { body: { id } });
+  const { data, error } = await supabase.functions.invoke('eliminar-usuario', {
+    headers: await cabeceraAuth(),
+    body: { id },
+  });
   if (error) {
     let msg = error.message;
     try { const ctx = await (error as any).context?.json(); if (ctx?.error) msg = ctx.error; } catch { /* noop */ }
     throw new Error(msg);
   }
   if (data?.error) throw new Error(data.error);
+}
+
+/**
+ * Última entrada de cada usuario: `id → fecha ISO` (null = nunca ha ingresado).
+ *
+ * `last_sign_in_at` vive en `auth.users`, que solo se lee con la service_role
+ * key, así que pasa por Edge Function. Devuelve `{}` si la función no está
+ * desplegada todavía, para que la pantalla siga funcionando sin el dato.
+ */
+export async function estadoAcceso(): Promise<Record<string, string | null>> {
+  const { data, error } = await supabase.functions.invoke('acceso-usuarios', {
+    headers: await cabeceraAuth(),
+    body: { op: 'estado' },
+  });
+  if (error || data?.error) return {};
+  return (data?.accesos ?? {}) as Record<string, string | null>;
+}
+
+/**
+ * Genera una contraseña temporal NUEVA para quien aún no ha ingresado.
+ *
+ * La que se mostró al crear la cuenta no se guarda en ninguna parte (Auth solo
+ * conserva el hash), así que no hay nada que «volver a ver»: lo único posible
+ * es sustituirla. La anterior deja de servir en cuanto se llama a esto.
+ */
+export async function regenerarCredenciales(id: string): Promise<{ email: string; password: string }> {
+  const { data, error } = await supabase.functions.invoke('acceso-usuarios', {
+    headers: await cabeceraAuth(),
+    body: { op: 'regenerar', id },
+  });
+  if (error) {
+    let msg = error.message;
+    try { const ctx = await (error as any).context?.json(); if (ctx?.error) msg = ctx.error; } catch { /* noop */ }
+    throw new Error(msg);
+  }
+  if (data?.error) throw new Error(data.error);
+  return { email: data.email, password: data.password };
 }
 
 // ═══ Borrado suave y solicitudes ═════════════════════════════════════════

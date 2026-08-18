@@ -21,6 +21,8 @@ import { Asignar } from '@/pages/Asignar';
 import { Devolucion } from '@/pages/Devolucion';
 import { Escanear } from '@/pages/Escanear';
 import { Colaboradores } from '@/pages/Colaboradores';
+import { LineasMoviles } from '@/pages/LineasMoviles';
+import { Tickets } from '@/pages/Tickets';
 import { Actas } from '@/pages/Actas';
 import { Proveedores } from '@/pages/Proveedores';
 import { ReporteProveedor } from '@/pages/ReporteProveedor';
@@ -95,6 +97,8 @@ export default function App() {
             <Route path="/devolucion" element={<Guard><Devolucion /></Guard>} />
             <Route path="/escanear" element={<Guard><Escanear /></Guard>} />
             <Route path="/colaboradores" element={<Guard><Colaboradores /></Guard>} />
+            <Route path="/lineas" element={<Guard><LineasMoviles /></Guard>} />
+            <Route path="/tickets" element={<Guard><Tickets /></Guard>} />
             <Route path="/actas" element={<Actas />} />
             <Route path="/proveedores" element={<Guard><Proveedores /></Guard>} />
             <Route path="/reporte-proveedor" element={<Guard><ReporteProveedor /></Guard>} />

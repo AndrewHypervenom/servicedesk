@@ -9,6 +9,16 @@ export const RUTA_ROLES: Record<string, RolUsuario[]> = {
   '/colaboradores': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
   '/proveedores': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
   '/reporte-proveedor': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
+  // Líneas móviles: la ven los cuatro roles. ADMIN y Jefe (LIDER) sobre todo el
+  // parque; el Líder de sede y el Técnico sobre las líneas de sus sedes más las
+  // que aún no tienen sede, que es de donde salen las asignaciones (el recorte
+  // lo aplica la propia pantalla).
+  '/lineas': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
+  // Control de tickets: es el trabajo diario de la mesa, así que entran los
+  // cuatro roles. ADMIN y Jefe (LIDER) ven todos los tickets; el Líder de sede y
+  // el Técnico, los de sus sedes más los que aún no tienen sede (el recorte lo
+  // aplica la propia pantalla).
+  '/tickets': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
   '/sedes': ['ADMIN'],
   '/integraciones': ['ADMIN'],
   // Ni el Líder de sede (JEFE_SEDE) ni el Técnico gestionan usuarios: no ven la
@@ -50,6 +60,22 @@ export function borradoRequiereAprobacion(rol: RolUsuario | undefined): boolean 
 
 export function esAdmin(rol: RolUsuario | undefined): boolean {
   return rol === 'ADMIN';
+}
+
+/**
+ * Roles que esta persona puede dar de alta.
+ *
+ * El Jefe (LIDER) crea equipo, no jefatura: otro Jefe, un Líder de sede y un
+ * Técnico, pero nunca un Administrador — si pudiera, se fabricaría uno y por
+ * ahí se ascendería a sí mismo. El Líder de sede y el Técnico no crean a nadie.
+ *
+ * Esto decide qué se pinta; quien manda de verdad es la Edge Function
+ * `crear-usuario`, que vuelve a comprobarlo con la service_role key.
+ */
+export function rolesQuePuedeCrear(rol: RolUsuario | undefined): RolUsuario[] {
+  if (rol === 'ADMIN') return ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'];
+  if (rol === 'LIDER') return ['LIDER', 'JEFE_SEDE', 'TECNICO'];
+  return [];
 }
 
 export function puedeVerRuta(rol: RolUsuario | undefined, ruta: string): boolean {

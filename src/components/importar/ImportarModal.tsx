@@ -10,9 +10,9 @@ import { Modal } from '@/components/ui/Modal';
 import { toast } from '@/components/ui/Toast';
 import { listColaboradores, listSedes } from '@/lib/api';
 import { fmtDate } from '@/lib/format';
-import { analizarLibro, detectarHojas, estadoCedulas } from '@/lib/importador/analizar';
+import { analizarLibro, detectarHojas, estadoCedulas, filaElegida } from '@/lib/importador/analizar';
 import { aplicarImportacion } from '@/lib/importador/aplicar';
-import { HOJAS } from '@/lib/importador/campos';
+import { HOJA_POR_ID } from '@/lib/importador/campos';
 import { normCedula, normNombre } from '@/lib/importador/normalizar';
 import type {
   Mapeo, ProgresoAplicacion, Resoluciones, ResultadoAnalisis, ResultadoAplicacion,
@@ -27,13 +27,17 @@ type Paso = 'archivo' | 'mapeo' | 'analizando' | 'revision' | 'aplicando' | 'lis
 
 const RES_INICIAL: Resoluciones = { cedulas: {}, conflictos: {}, sedes: {}, sedeDefecto: null };
 
-/** ¿El mapeo asigna la columna obligatoria de cada hoja que trae datos? */
+/**
+ * ¿Se puede continuar con este mapeo? Hace falta que al menos una hoja aporte
+ * algo, y que cada hoja con datos tenga asignadas sus columnas obligatorias.
+ */
 function mapeoCompleto(mapeo: Mapeo | null): boolean {
-  if (!mapeo) return false;
-  return HOJAS.every((h) => {
-    const m = mapeo[h.id];
-    if (!m || m.filas === 0) return true;
-    return h.campos.filter((c) => c.obligatorio).every((c) => !!m.campos[c.id]);
+  if (!mapeo || !mapeo.some((m) => m.tipo && m.filas > 0)) return false;
+  return mapeo.every((m) => {
+    if (!m.tipo || m.filas === 0) return true;
+    return HOJA_POR_ID[m.tipo].campos
+      .filter((c) => c.obligatorio)
+      .every((c) => !!m.campos[c.id]);
   });
 }
 
@@ -126,9 +130,11 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
     setArchivo(file);
     try {
       // Primera pasada rápida: detectar hojas y columnas para proponer el mapeo.
+      // Aunque no se reconozca ninguna hoja se sigue al mapeo: allí el usuario
+      // puede decir qué es cada una, que es justo lo que antes no se podía.
       const m = await detectarHojas(file);
-      if (!Object.keys(m).length) {
-        toast.error('No encontramos hojas reconocibles (BD_EQUIPOS, ENTRADAS, SALIDAS o CLARO).');
+      if (!m.some((h) => h.filas > 0)) {
+        toast.error('El archivo no tiene ninguna hoja con datos.');
         setArchivo(null);
         return;
       }
@@ -216,10 +222,7 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
   const previo = useMemo(() => {
     if (!analisis) return { equipos: 0, colaboradores: 0, movimientos: 0 };
 
-    const equipos = analisis.equipos.filter((e) => {
-      const elegida = res.conflictos[e.serial];
-      return elegida === undefined || elegida === e.fila;
-    }).length;
+    const equipos = analisis.equipos.filter((e) => filaElegida(e, res.conflictos)).length;
 
     // Una cédula escrita a mano puede coincidir con alguien que ya venía de ENTRADAS.
     const cedulas = new Set(analisis.colaboradores.map((c) => c.cedula));

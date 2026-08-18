@@ -1,7 +1,7 @@
 import { supabase } from '@/lib/supabase';
 import { ensureMarca } from '@/lib/api';
 import { normNombre } from './normalizar';
-import { indiceCedulas } from './analizar';
+import { filaElegida, indiceCedulas } from './analizar';
 import type {
   ProgresoAplicacion, ResultadoAnalisis, ResultadoAplicacion, Resoluciones,
 } from './tipos';
@@ -36,12 +36,8 @@ export async function aplicarImportacion(
   }
 
   // --- equipos: de los seriales en conflicto solo va la fila que el usuario eligió
-  const filaElegida = new Map(Object.entries(res.conflictos));
   const equipos = analisis.equipos
-    .filter((e) => {
-      const elegida = filaElegida.get(e.serial);
-      return elegida === undefined || elegida === e.fila;
-    })
+    .filter((e) => filaElegida(e, res.conflictos))
     .map((e) => {
       const cedula = e.usuarioNombre ? cedulaDe.get(normNombre(e.usuarioNombre)) ?? null : null;
       // `cedula_asignado` es llave foránea: un equipo "asignado" sin cédula no se
@@ -78,7 +74,7 @@ export async function aplicarImportacion(
       estado_nuevo: esEntrada ? 'DISPONIBLE' : 'ASIGNADO',
       fecha: m.fecha, // si es null, la función pone CURRENT_DATE
       registrado_por: m.registrado_por,
-      observaciones: [m.observaciones, `Importado de ${m.hoja} (fila ${m.fila})`]
+      observaciones: [m.observaciones, `Importado de ${m.hoja.trim()} (fila ${m.fila})`]
         .filter(Boolean).join('. '),
     };
   });

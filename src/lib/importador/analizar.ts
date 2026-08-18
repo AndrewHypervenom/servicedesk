@@ -6,32 +6,33 @@ import {
 import {
   BODEGA, CONDICIONES, ESTADOS, MARCAS_CONOCIDAS, MARCAS_QUE_SON_MODELO, TIPOS, modeloEsDudoso,
 } from './catalogos';
-import {
-  HOJAS, campoParaColumna, nombreRealDeHoja,
-} from './campos';
+import { HOJA_POR_ID, mapeoDeColumnas, tipoDeHoja } from './campos';
+import type { HojaId } from './campos';
+import { filaVacia, leerHoja } from './hoja';
+import type { Fila } from './hoja';
 import type {
   ColaboradorImport, ConflictoSerial, EquipoImport, Incidencia, Mapeo, MapeoHoja, ModoExtra,
   MovimientoImport, PendienteCedula, ResultadoAnalisis, ResumenHoja, Severidad,
 } from './tipos';
 
-type Fila = Record<string, unknown>;
-
-/** El encabezado ocupa la fila 1, así que el índice 0 del JSON es la fila 2 del Excel. */
-const filaExcel = (i: number) => i + 2;
+/**
+ * Identifica una fila concreta del libro. La fila sola no basta: con varias hojas
+ * del mismo tipo, la fila 10 existe en todas.
+ */
+export const claveFila = (hoja: string, fila: number) => `${hoja}#${fila}`;
 
 /** Lee una celda por el *campo del sistema*, resolviendo la columna a través del mapeo. */
 type Lector = (fila: Fila, campoId: string) => unknown;
 
-function hacerLector(m: MapeoHoja | undefined): Lector {
+function hacerLector(m: MapeoHoja): Lector {
   return (fila, campoId) => {
-    const columna = m?.campos[campoId];
+    const columna = m.campos[campoId];
     return columna ? fila[columna] ?? null : null;
   };
 }
 
 /** Las columnas que el usuario marcó "a observaciones", ya formateadas «Columna: valor». */
-function extrasDe(fila: Fila, m: MapeoHoja | undefined): string[] {
-  if (!m) return [];
+function extrasDe(fila: Fila, m: MapeoHoja): string[] {
   const out: string[] = [];
   for (const [columna, modo] of Object.entries(m.extras)) {
     if (modo !== 'OBSERVACIONES') continue;
@@ -41,10 +42,13 @@ function extrasDe(fila: Fila, m: MapeoHoja | undefined): string[] {
   return out;
 }
 
-/** Filas de una hoja según el nombre real que guardó el mapeo. */
-function filasDe(wb: XLSX.WorkBook, m: MapeoHoja | undefined): Fila[] {
-  if (!m || !wb.Sheets[m.hoja]) return [];
-  return XLSX.utils.sheet_to_json<Fila>(wb.Sheets[m.hoja], { defval: null, raw: false });
+/** Las hojas del libro que el mapeo marcó como de una clase dada, en orden. */
+const hojasDe = (mapeo: Mapeo, tipo: HojaId) => mapeo.filter((m) => m.tipo === tipo);
+
+/** Lo que aportó cada hoja, para el resumen que se muestra al final. */
+interface ConteoHoja {
+  utiles: number;
+  nota?: string;
 }
 
 /** Acumula incidencias con id incremental para poder listarlas y resaltarlas en la UI. */
@@ -64,59 +68,40 @@ class Registro {
 // -------------------------------------------------------------- detección de hojas
 
 /**
- * Primera pasada: mira el libro y propone, hoja por hoja, qué columna alimenta cada
- * campo. Es solo la sugerencia de arranque; el usuario la ajusta en el paso de mapeo.
+ * Primera pasada: recorre **todas** las hojas del libro y propone, para cada una,
+ * qué clase de hoja es y qué columna alimenta cada campo. Es solo la sugerencia de
+ * arranque; el usuario la ajusta en el paso de mapeo, incluida la clase de hoja.
  */
 export async function detectarHojas(file: File): Promise<Mapeo> {
   const wb = XLSX.read(await file.arrayBuffer(), { type: 'array', cellDates: true });
-  const mapeo: Mapeo = {};
 
-  for (const def of HOJAS) {
-    const hoja = nombreRealDeHoja(def, wb.SheetNames);
-    if (!hoja) continue;
+  return wb.SheetNames.map((hoja): MapeoHoja => {
+    const hl = leerHoja(wb, hoja);
+    const tipo = tipoDeHoja(hoja);
+    const { campos, extras } = tipo
+      ? mapeoDeColumnas(HOJA_POR_ID[tipo], hl.columnas)
+      : { campos: {} as Record<string, string | null>, extras: {} as Record<string, ModoExtra> };
 
-    const matriz = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[hoja], {
-      header: 1, defval: null, raw: false,
-    });
-    const encab = (matriz[0] ?? []) as unknown[];
+    return {
+      hoja,
+      tipo,
+      tipoPor: 'DETECTADO',
+      columnas: hl.columnas,
+      muestras: hl.muestras,
+      filas: hl.conDatos,
+      campos,
+      extras,
+    };
+  });
+}
 
-    // La columna se guarda *verbatim* (con sus espacios) porque ese es exactamente el
-    // nombre con el que XLSX indexa las filas; se recorta solo al mostrarla.
-    const colConIdx: { nombre: string; idx: number }[] = [];
-    encab.forEach((c, idx) => {
-      const nombre = c == null ? '' : String(c);
-      if (nombre.trim() && !colConIdx.some((x) => x.nombre === nombre)) {
-        colConIdx.push({ nombre, idx });
-      }
-    });
-    const columnas = colConIdx.map((x) => x.nombre);
-
-    const cuerpo = matriz.slice(1) as unknown[][];
-    const filas = cuerpo.filter((r) => r.some((c) => c != null && String(c).trim() !== '')).length;
-
-    const muestras: Record<string, string[]> = {};
-    for (const { nombre, idx } of colConIdx) {
-      const vals: string[] = [];
-      for (const r of cuerpo) {
-        const s = r[idx] == null ? '' : String(r[idx]).trim();
-        if (s) { vals.push(s); if (vals.length >= 3) break; }
-      }
-      muestras[nombre] = vals;
-    }
-
-    const campos: Record<string, string | null> = {};
-    for (const c of def.campos) campos[c.id] = null;
-    const extras: Record<string, ModoExtra> = {};
-    for (const col of columnas) {
-      const campoId = campoParaColumna(def, col);
-      if (campoId && campos[campoId] == null) campos[campoId] = col;
-      else extras[col] = 'IGNORAR';
-    }
-
-    mapeo[def.id] = { hoja, columnas, muestras, filas, campos, extras };
-  }
-
-  return mapeo;
+/** Rehace la propuesta de columnas cuando el usuario cambia la clase de una hoja. */
+export function reasignarTipo(m: MapeoHoja, tipo: HojaId | null): MapeoHoja {
+  if (tipo === m.tipo) return m;
+  const { campos, extras } = tipo
+    ? mapeoDeColumnas(HOJA_POR_ID[tipo], m.columnas)
+    : { campos: {} as Record<string, string | null>, extras: {} as Record<string, ModoExtra> };
+  return { ...m, tipo, tipoPor: 'USUARIO', campos, extras };
 }
 
 // ---------------------------------------------------------------- equipos (BD + CLARO)
@@ -133,15 +118,18 @@ function firmaDe(e: EquipoImport): string {
   ].join('|');
 }
 
-/** BD_EQUIPOS: la hoja principal, con toda la validación fila a fila. */
-function leerBdEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: FilaEquipo[]) {
-  const m = mapeo.BD_EQUIPOS;
-  const filas = filasDe(wb, m);
+/** Hoja de inventario: la principal, con toda la validación fila a fila. */
+function leerBdEquipos(
+  wb: XLSX.WorkBook, m: MapeoHoja, reg: Registro, leidas: FilaEquipo[],
+): ConteoHoja {
+  const hl = leerHoja(wb, m.hoja);
   const lee = hacerLector(m);
   let plantilla = 0;
   let utiles = 0;
 
-  filas.forEach((f, i) => {
+  hl.filas.forEach((f, i) => {
+    if (filaVacia(f)) return;
+
     const serial = normSerial(lee(f, 'serial'));
     if (!serial) {
       // Las filas sin serial son el resto de la plantilla: traen ESTADO=DISPONIBLE
@@ -150,7 +138,7 @@ function leerBdEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: F
       return;
     }
 
-    const fila = filaExcel(i);
+    const fila = hl.filaExcel(i);
     const marcaCruda = norm(lee(f, 'marca'));
     const modeloCrudo = norm(lee(f, 'modelo'));
     const tipoCrudo = norm(lee(f, 'tipo'));
@@ -163,7 +151,7 @@ function leerBdEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: F
     if (MARCAS_QUE_SON_MODELO[marcaCruda]) {
       const real = MARCAS_QUE_SON_MODELO[marcaCruda];
       reg.add({
-        tipo: 'MARCA_SOSPECHOSA', severidad: 'ADVERTENCIA', hoja: 'BD_EQUIPOS', fila,
+        tipo: 'MARCA_SOSPECHOSA', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
         columna: 'MARCA', valor: marcaCruda,
         mensaje: `«${marcaCruda}» es una línea de producto, no un fabricante.`,
         sugerencia: `Se importa como ${real}. Verifica que sea correcto.`,
@@ -171,14 +159,14 @@ function leerBdEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: F
       marca = real;
     } else if (marcaCruda && !MARCAS_CONOCIDAS.has(marcaCruda)) {
       reg.add({
-        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: 'BD_EQUIPOS', fila,
+        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
         columna: 'MARCA', valor: marcaCruda,
         mensaje: `La marca «${marcaCruda}» no está en el catálogo de la hoja CONFIGURACIÓN.`,
         sugerencia: 'Se importa igual y se agrega al catálogo de marcas.',
       });
     } else if (!marcaCruda) {
       reg.add({
-        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: 'BD_EQUIPOS', fila,
+        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
         columna: 'MARCA', valor: '',
         mensaje: 'El equipo no tiene marca.',
         sugerencia: 'Se importa como «SIN MARCA»; complétala luego en Inventario.',
@@ -190,14 +178,14 @@ function leerBdEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: F
     if (!modeloCrudo) {
       linea_modelo = 'SIN MODELO';
       reg.add({
-        tipo: 'MODELO_AUSENTE', severidad: 'ADVERTENCIA', hoja: 'BD_EQUIPOS', fila,
+        tipo: 'MODELO_AUSENTE', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
         columna: 'MODELO', valor: '',
         mensaje: 'El equipo no tiene modelo.',
         sugerencia: 'Se importa como «SIN MODELO»; complétalo luego en Inventario.',
       });
     } else if (modeloEsDudoso(modeloCrudo)) {
       reg.add({
-        tipo: 'MODELO_SOSPECHOSO', severidad: 'ADVERTENCIA', hoja: 'BD_EQUIPOS', fila,
+        tipo: 'MODELO_SOSPECHOSO', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
         columna: 'MODELO', valor: modeloCrudo,
         mensaje: `«${modeloCrudo}» no parece el modelo del equipo, sino su tarjeta de red o su serial.`,
         sugerencia: 'Se importa tal cual. Revísalo contra el equipo físico.',
@@ -209,7 +197,7 @@ function leerBdEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: F
     if (!tipo) {
       tipo = 'OTRO';
       reg.add({
-        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: 'BD_EQUIPOS', fila,
+        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
         columna: 'TIPO DE DISPOSITIVO', valor: tipoCrudo,
         mensaje: `Tipo de dispositivo no reconocido: «${tipoCrudo || 'vacío'}».`,
         sugerencia: 'Se importa como «Otro».',
@@ -221,7 +209,7 @@ function leerBdEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: F
     if (!estado_asignacion) {
       estado_asignacion = 'DISPONIBLE';
       reg.add({
-        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: 'BD_EQUIPOS', fila,
+        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
         columna: 'ESTADO ACTUAL', valor: estadoCrudo,
         mensaje: `Estado no reconocido: «${estadoCrudo || 'vacío'}».`,
         sugerencia: 'Se importa como «Disponible».',
@@ -233,7 +221,7 @@ function leerBdEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: F
     if (!estado_fisico) {
       estado_fisico = 'BUENO';
       reg.add({
-        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: 'BD_EQUIPOS', fila,
+        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
         columna: 'CONDICIÓN', valor: condCruda,
         mensaje: `Condición no reconocida: «${condCruda || 'vacío'}».`,
         sugerencia: 'Se importa como «Bueno».',
@@ -249,7 +237,7 @@ function leerBdEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: F
     // de la propia hoja: el estado y la columna de usuario dicen cosas distintas.
     if (estado_asignacion === 'ASIGNADO' && !usuarioNombre) {
       reg.add({
-        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: 'BD_EQUIPOS', fila,
+        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
         columna: 'USUARIO ACTUAL', valor: norm(usuarioCrudo),
         mensaje: 'El equipo figura como ENTREGADO pero no dice a quién.',
         sugerencia: 'Se importa como «Disponible».',
@@ -258,7 +246,7 @@ function leerBdEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: F
     }
     if (estado_asignacion !== 'ASIGNADO' && usuarioNombre) {
       reg.add({
-        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: 'BD_EQUIPOS', fila,
+        tipo: 'VALOR_NO_CATALOGADO', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
         columna: 'USUARIO ACTUAL', valor: usuarioNombre,
         mensaje: `El equipo está «${estadoCrudo}» pero aparece a cargo de ${usuarioNombre}.`,
         sugerencia: 'Se importa como «Asignado» para no perder al responsable.',
@@ -270,7 +258,7 @@ function leerBdEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: F
     const observaciones = [comentario, ...extrasDe(f, m)].filter(Boolean).join('. ') || null;
 
     const equipo: FilaEquipo = {
-      fila, serial, marca, linea_modelo, tipo, estado_fisico, estado_asignacion,
+      fila, hoja: m.hoja, serial, marca, linea_modelo, tipo, estado_fisico, estado_asignacion,
       observaciones, usuarioNombre, ubicacion: limpioODefecto(lee(f, 'ubicacion')),
       propiedad: 'EMPRESA', proveedor_propietario: null, origen: 'BD_EQUIPOS', firma: '',
     };
@@ -281,13 +269,13 @@ function leerBdEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: F
 
   if (plantilla > 0) {
     reg.add({
-      tipo: 'FILAS_PLANTILLA', severidad: 'INFO', hoja: 'BD_EQUIPOS',
+      tipo: 'FILAS_PLANTILLA', severidad: 'INFO', hoja: m.hoja,
       mensaje: `${plantilla} filas sin serial se omitieron.`,
       sugerencia: 'Son filas de plantilla: arrastran «DISPONIBLE / BODEGA» pero no describen ningún equipo.',
     });
   }
 
-  return { filasLeidas: filas.length, utiles, plantilla };
+  return { utiles, nota: plantilla ? `${plantilla} filas de plantilla omitidas` : undefined };
 }
 
 /** La ubicación de los equipos CLARO sale del nombre de la hoja ("… CLARO BOGOTA"). */
@@ -299,19 +287,21 @@ function ubicacionDeHojaClaro(nombre: string): string | null {
   return resto || null;
 }
 
-/** EQUIPOS CLARO …: celulares en comodato del operador. Validación ligera. */
-function leerClaro(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: FilaEquipo[]) {
-  const m = mapeo.CLARO;
-  const filas = filasDe(wb, m);
+/** Hoja de comodato del operador: celulares que no son de la empresa. Validación ligera. */
+function leerClaro(
+  wb: XLSX.WorkBook, m: MapeoHoja, reg: Registro, leidas: FilaEquipo[],
+): ConteoHoja {
+  const hl = leerHoja(wb, m.hoja);
   const lee = hacerLector(m);
-  const ubicacion = m ? ubicacionDeHojaClaro(m.hoja) : null;
+  const ubicacion = ubicacionDeHojaClaro(m.hoja);
   let utiles = 0;
 
-  filas.forEach((f, i) => {
+  hl.filas.forEach((f, i) => {
+    if (filaVacia(f)) return;
     const serial = normSerial(lee(f, 'serial'));
     if (!serial) return;
 
-    const fila = filaExcel(i);
+    const fila = hl.filaExcel(i);
     const marca = norm(lee(f, 'marca')) || 'SIN MARCA';
     const estadoCrudo = norm(lee(f, 'estado'));
     // CLARO no trae responsable, así que un "ENTREGADO" no se puede sostener: queda disponible.
@@ -329,7 +319,7 @@ function leerClaro(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: FilaE
     ].filter(Boolean).join('. ') || null;
 
     const equipo: FilaEquipo = {
-      fila, serial, marca, linea_modelo: 'SIN MODELO', tipo: 'CELULAR',
+      fila, hoja: m.hoja, serial, marca, linea_modelo: 'SIN MODELO', tipo: 'CELULAR',
       estado_fisico: 'BUENO', estado_asignacion, observaciones, usuarioNombre: null,
       ubicacion, propiedad: 'COMODATO', proveedor_propietario: 'CLARO', origen: 'CLARO', firma: '',
     };
@@ -340,21 +330,24 @@ function leerClaro(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro, leidas: FilaE
 
   if (utiles > 0) {
     reg.add({
-      tipo: 'HOJA_IGNORADA', severidad: 'INFO', hoja: m?.hoja ?? 'CLARO',
-      mensaje: `${utiles} equipos CLARO se importan en comodato.`,
+      tipo: 'HOJA_IGNORADA', severidad: 'INFO', hoja: m.hoja,
+      mensaje: `${utiles} equipos de «${m.hoja.trim()}» se importan en comodato.`,
       sugerencia: 'Quedan con propiedad COMODATO y proveedor CLARO; la línea va en observaciones.',
     });
   }
 
-  return { filasLeidas: filas.length, utiles };
+  return { utiles };
 }
 
 function analizarEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro) {
   const leidas: FilaEquipo[] = [];
-  const bd = leerBdEquipos(wb, mapeo, reg, leidas);
-  const claro = leerClaro(wb, mapeo, reg, leidas);
+  const conteos = new Map<string, ConteoHoja>();
 
-  // --- seriales repetidos (mira BD y CLARO juntos, por si un serial cae en ambos)
+  for (const m of hojasDe(mapeo, 'BD_EQUIPOS')) conteos.set(m.hoja, leerBdEquipos(wb, m, reg, leidas));
+  for (const m of hojasDe(mapeo, 'CLARO')) conteos.set(m.hoja, leerClaro(wb, m, reg, leidas));
+
+  // --- seriales repetidos (mira todas las hojas de equipos juntas, por si un
+  // serial cae en dos: es justo el caso que hay que resolver a mano)
   const porSerial = new Map<string, FilaEquipo[]>();
   for (const e of leidas) {
     const g = porSerial.get(e.serial);
@@ -364,6 +357,9 @@ function analizarEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro) {
 
   const equipos: EquipoImport[] = [];
   const conflictos: ConflictoSerial[] = [];
+  /** Cómo se nombra una fila en los mensajes: con hoja solo si hay más de una. */
+  const variasHojas = new Set(leidas.map((e) => e.hoja)).size > 1;
+  const donde = (e: FilaEquipo) => (variasHojas ? `${e.hoja.trim()} fila ${e.fila}` : `fila ${e.fila}`);
 
   for (const [serial, grupo] of porSerial) {
     if (grupo.length === 1) {
@@ -374,9 +370,9 @@ function analizarEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro) {
     const distintas = new Set(grupo.map((g) => g.firma));
     if (distintas.size === 1) {
       reg.add({
-        tipo: 'SERIAL_CONFLICTO', severidad: 'INFO', hoja: 'BD_EQUIPOS', fila: grupo[0].fila,
+        tipo: 'SERIAL_CONFLICTO', severidad: 'INFO', hoja: grupo[0].hoja, fila: grupo[0].fila,
         columna: 'SERIAL', valor: serial,
-        mensaje: `El serial ${serial} está ${grupo.length} veces con los mismos datos (filas ${grupo.map((g) => g.fila).join(', ')}).`,
+        mensaje: `El serial ${serial} está ${grupo.length} veces con los mismos datos (${grupo.map(donde).join(', ')}).`,
         sugerencia: 'Se importa una sola vez.',
       });
       equipos.push(grupo[0]);
@@ -384,14 +380,16 @@ function analizarEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro) {
     }
 
     reg.add({
-      tipo: 'SERIAL_CONFLICTO', severidad: 'BLOQUEANTE', hoja: 'BD_EQUIPOS', fila: grupo[0].fila,
+      tipo: 'SERIAL_CONFLICTO', severidad: 'BLOQUEANTE', hoja: grupo[0].hoja, fila: grupo[0].fila,
       columna: 'SERIAL', valor: serial,
-      mensaje: `El serial ${serial} aparece en las filas ${grupo.map((g) => g.fila).join(' y ')} con datos que no coinciden.`,
+      mensaje: `El serial ${serial} aparece en ${grupo.map(donde).join(' y ')} con datos que no coinciden.`,
       sugerencia: 'Elige cuál refleja la realidad; la otra se descarta.',
     });
     conflictos.push({
       serial,
       opciones: grupo.map((g) => ({
+        clave: claveFila(g.hoja, g.fila),
+        hoja: g.hoja,
         fila: g.fila,
         estado_asignacion: g.estado_asignacion,
         estado_fisico: g.estado_fisico,
@@ -402,139 +400,192 @@ function analizarEquipos(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro) {
     equipos.push(...grupo);
   }
 
-  return { equipos, conflictos, bd, claro };
+  return { equipos, conflictos, conteos };
 }
 
 // ------------------------------------------------------------------ ENTRADAS
 
+/** nombre normalizado -> cédula: ENTRADAS es la única fuente de cédulas del archivo. */
+type Cedulas = Map<string, { cedula: string; nombre: string }>;
+
 function analizarEntradas(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro) {
-  const m = mapeo.ENTRADAS;
-  const filas = filasDe(wb, m);
-  const lee = hacerLector(m);
   const movimientos: MovimientoImport[] = [];
-  /** nombre normalizado -> cédula, la única fuente de cédulas del archivo. */
-  const cedulas = new Map<string, { cedula: string; nombre: string }>();
+  const cedulas: Cedulas = new Map();
+  const conteos = new Map<string, ConteoHoja>();
 
-  filas.forEach((f, i) => {
-    const serial = normSerial(lee(f, 'serial'));
-    if (!serial) return;
+  for (const m of hojasDe(mapeo, 'ENTRADAS')) {
+    const hl = leerHoja(wb, m.hoja);
+    const lee = hacerLector(m);
+    let utiles = 0;
+    let personas = 0;
 
-    const fila = filaExcel(i);
-    const nombre = limpioODefecto(lee(f, 'quienEntrega'));
-    const cedulaCruda = lee(f, 'cedula');
-    const cedula = normCedula(cedulaCruda);
+    hl.filas.forEach((f, i) => {
+      if (filaVacia(f)) return;
+      const serial = normSerial(lee(f, 'serial'));
+      if (!serial) return;
 
-    if (nombre && cedula) {
-      const clave = normNombre(nombre);
-      const previo = cedulas.get(clave);
-      if (previo && previo.cedula !== cedula) {
+      const fila = hl.filaExcel(i);
+      const nombre = limpioODefecto(lee(f, 'quienEntrega'));
+      const cedulaCruda = lee(f, 'cedula');
+      const cedula = normCedula(cedulaCruda);
+
+      if (nombre && cedula) {
+        const clave = normNombre(nombre);
+        const previo = cedulas.get(clave);
+        if (previo && previo.cedula !== cedula) {
+          reg.add({
+            tipo: 'CEDULA_INVALIDA', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
+            columna: 'CEDULA', valor: String(cedulaCruda ?? ''),
+            mensaje: `${nombre} aparece con dos cédulas distintas: ${previo.cedula} y ${cedula}.`,
+            sugerencia: `Se usa la primera (${previo.cedula}). Verifica cuál es la correcta.`,
+          });
+        } else if (!previo) {
+          cedulas.set(clave, { cedula, nombre: nombrePropio(nombre) });
+          personas++;
+        }
+      } else if (nombre && !cedula && !esVacio(cedulaCruda)) {
         reg.add({
-          tipo: 'CEDULA_INVALIDA', severidad: 'ADVERTENCIA', hoja: 'ENTRADAS', fila,
+          tipo: 'CEDULA_INVALIDA', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
           columna: 'CEDULA', valor: String(cedulaCruda ?? ''),
-          mensaje: `${nombre} aparece con dos cédulas distintas: ${previo.cedula} y ${cedula}.`,
-          sugerencia: `Se usa la primera (${previo.cedula}). Verifica cuál es la correcta.`,
+          mensaje: `La cédula de ${nombre} («${String(cedulaCruda).trim()}») no es un número válido.`,
+          sugerencia: 'El movimiento se importa sin asociar a la persona.',
         });
-      } else if (!previo) {
-        cedulas.set(clave, { cedula, nombre: nombrePropio(nombre) });
       }
-    } else if (nombre && !cedula && !esVacio(cedulaCruda)) {
-      reg.add({
-        tipo: 'CEDULA_INVALIDA', severidad: 'ADVERTENCIA', hoja: 'ENTRADAS', fila,
-        columna: 'CEDULA', valor: String(cedulaCruda ?? ''),
-        mensaje: `La cédula de ${nombre} («${String(cedulaCruda).trim()}») no es un número válido.`,
-        sugerencia: 'El movimiento se importa sin asociar a la persona.',
+
+      const { iso, invalida } = parseFecha(lee(f, 'fecha'));
+      if (invalida) {
+        reg.add({
+          tipo: 'FECHA_INVALIDA', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
+          columna: 'FECHA', valor: String(lee(f, 'fecha') ?? ''),
+          mensaje: `No se pudo leer la fecha «${String(lee(f, 'fecha')).trim()}».`,
+          sugerencia: 'El movimiento se registra sin fecha.',
+        });
+      }
+
+      const motivo = limpioODefecto(lee(f, 'motivo'));
+      const perifericos = limpioODefecto(lee(f, 'perifericos'));
+      const estadoRecibir = limpioODefecto(lee(f, 'estadoRecibir'));
+      const acta = limpioODefecto(lee(f, 'acta'));
+      const notas = [
+        motivo && `Motivo: ${motivo}`,
+        perifericos && `Periféricos: ${perifericos}`,
+        estadoRecibir && `Estado al recibir: ${estadoRecibir}`,
+        acta && `Acta: ${acta}`,
+        ...extrasDe(f, m),
+      ].filter(Boolean).join('. ');
+
+      movimientos.push({
+        fila,
+        hoja: m.hoja,
+        tipoHoja: 'ENTRADAS',
+        serial,
+        tipo_movimiento: 'DEVOLUCION_COLABORADOR',
+        fecha: iso,
+        personaNombre: nombre,
+        personaCedula: cedula,
+        registrado_por: limpioODefecto(lee(f, 'recibidoPor')),
+        observaciones: notas || null,
       });
-    }
-
-    const { iso, invalida } = parseFecha(lee(f, 'fecha'));
-    if (invalida) {
-      reg.add({
-        tipo: 'FECHA_INVALIDA', severidad: 'ADVERTENCIA', hoja: 'ENTRADAS', fila,
-        columna: 'FECHA', valor: String(lee(f, 'fecha') ?? ''),
-        mensaje: `No se pudo leer la fecha «${String(lee(f, 'fecha')).trim()}».`,
-        sugerencia: 'El movimiento se registra sin fecha.',
-      });
-    }
-
-    const motivo = limpioODefecto(lee(f, 'motivo'));
-    const perifericos = limpioODefecto(lee(f, 'perifericos'));
-    const estadoRecibir = limpioODefecto(lee(f, 'estadoRecibir'));
-    const acta = limpioODefecto(lee(f, 'acta'));
-    const notas = [
-      motivo && `Motivo: ${motivo}`,
-      perifericos && `Periféricos: ${perifericos}`,
-      estadoRecibir && `Estado al recibir: ${estadoRecibir}`,
-      acta && `Acta: ${acta}`,
-      ...extrasDe(f, m),
-    ].filter(Boolean).join('. ');
-
-    movimientos.push({
-      fila,
-      hoja: 'ENTRADAS',
-      serial,
-      tipo_movimiento: 'DEVOLUCION_COLABORADOR',
-      fecha: iso,
-      personaNombre: nombre,
-      personaCedula: cedula,
-      registrado_por: limpioODefecto(lee(f, 'recibidoPor')),
-      observaciones: notas || null,
+      utiles++;
     });
-  });
 
-  return { movimientos, cedulas, filasLeidas: filas.length };
+    conteos.set(m.hoja, {
+      utiles,
+      nota: `${personas} ${personas === 1 ? 'persona' : 'personas'} con cédula`,
+    });
+  }
+
+  return { movimientos, cedulas, conteos };
 }
 
 // ------------------------------------------------------------------- SALIDAS
 
 function analizarSalidas(wb: XLSX.WorkBook, mapeo: Mapeo, reg: Registro) {
-  const m = mapeo.SALIDAS;
-  const filas = filasDe(wb, m);
-  const lee = hacerLector(m);
   const movimientos: MovimientoImport[] = [];
+  const conteos = new Map<string, ConteoHoja>();
 
-  filas.forEach((f, i) => {
-    const serial = normSerial(lee(f, 'serial'));
-    // Las filas de relleno solo traen MODELO = "ID NO REGISTRADO" y nada más.
-    if (!serial) return;
+  for (const m of hojasDe(mapeo, 'SALIDAS')) {
+    const hl = leerHoja(wb, m.hoja);
+    const lee = hacerLector(m);
+    let utiles = 0;
 
-    const fila = filaExcel(i);
-    const { iso, invalida } = parseFecha(lee(f, 'fecha'));
-    if (invalida) {
-      reg.add({
-        tipo: 'FECHA_INVALIDA', severidad: 'ADVERTENCIA', hoja: 'SALIDAS', fila,
-        columna: 'FECHA SALIDA', valor: String(lee(f, 'fecha') ?? ''),
-        mensaje: `No se pudo leer la fecha «${String(lee(f, 'fecha')).trim()}».`,
-        sugerencia: 'El movimiento se registra sin fecha.',
+    hl.filas.forEach((f, i) => {
+      if (filaVacia(f)) return;
+      const serial = normSerial(lee(f, 'serial'));
+      // Las filas de relleno solo traen MODELO = "ID NO REGISTRADO" y nada más.
+      if (!serial) return;
+
+      const fila = hl.filaExcel(i);
+      const { iso, invalida } = parseFecha(lee(f, 'fecha'));
+      if (invalida) {
+        reg.add({
+          tipo: 'FECHA_INVALIDA', severidad: 'ADVERTENCIA', hoja: m.hoja, fila,
+          columna: 'FECHA SALIDA', valor: String(lee(f, 'fecha') ?? ''),
+          mensaje: `No se pudo leer la fecha «${String(lee(f, 'fecha')).trim()}».`,
+          sugerencia: 'El movimiento se registra sin fecha.',
+        });
+      }
+
+      const ticket = limpioODefecto(lee(f, 'ticket'));
+      const perifericos = limpioODefecto(lee(f, 'perifericos'));
+      const anotaciones = limpioODefecto(lee(f, 'anotaciones'));
+      const notas = [
+        ticket && `Ticket: ${ticket}`,
+        perifericos && `Periféricos: ${perifericos}`,
+        anotaciones,
+        ...extrasDe(f, m),
+      ].filter(Boolean).join('. ');
+
+      movimientos.push({
+        fila,
+        hoja: m.hoja,
+        tipoHoja: 'SALIDAS',
+        serial,
+        tipo_movimiento: 'ASIGNACION',
+        fecha: iso,
+        personaNombre: limpioODefecto(lee(f, 'responsable')),
+        personaCedula: null, // la hoja no la trae; se resuelve por nombre
+        registrado_por: null,
+        observaciones: notas || null,
       });
-    }
-
-    const ticket = limpioODefecto(lee(f, 'ticket'));
-    const perifericos = limpioODefecto(lee(f, 'perifericos'));
-    const anotaciones = limpioODefecto(lee(f, 'anotaciones'));
-    const notas = [
-      ticket && `Ticket: ${ticket}`,
-      perifericos && `Periféricos: ${perifericos}`,
-      anotaciones,
-      ...extrasDe(f, m),
-    ].filter(Boolean).join('. ');
-
-    movimientos.push({
-      fila,
-      hoja: 'SALIDAS',
-      serial,
-      tipo_movimiento: 'ASIGNACION',
-      fecha: iso,
-      personaNombre: limpioODefecto(lee(f, 'responsable')),
-      personaCedula: null, // la hoja no la trae; se resuelve por nombre
-      registrado_por: null,
-      observaciones: notas || null,
+      utiles++;
     });
-  });
 
-  return { movimientos, filasLeidas: filas.length };
+    conteos.set(m.hoja, { utiles });
+  }
+
+  return { movimientos, conteos };
 }
 
 // -------------------------------------------------------------------- público
+
+/**
+ * Qué decir de una hoja que no se va a importar. La distinción importa: una hoja
+ * de catálogos no aporta registros *por diseño*, pero una hoja con datos que
+ * nadie reconoció es dato que se está perdiendo, y eso hay que avisarlo.
+ */
+function hojaSinTipo(m: MapeoHoja): { nota: string; severidad: Severidad } {
+  const n = normNombre(m.hoja);
+  if (n === 'CONFIGURACION') {
+    return {
+      nota: 'Catálogos de la hoja; se usan para validar, no se importan como registros',
+      severidad: 'INFO',
+    };
+  }
+  if (n === 'DASHBOARD') {
+    return { nota: 'Solo gráficos y fórmulas, sin datos propios', severidad: 'INFO' };
+  }
+  if (m.filas === 0) {
+    return { nota: 'Sin filas con datos para importar', severidad: 'INFO' };
+  }
+  if (m.tipoPor === 'USUARIO') {
+    return { nota: `${m.filas} filas: la marcaste como «no importar»`, severidad: 'INFO' };
+  }
+  return {
+    nota: `${m.filas} filas con datos que NO se importan: no se reconoció qué tipo de hoja es`,
+    severidad: 'ADVERTENCIA',
+  };
+}
 
 export async function analizarLibro(file: File, mapeo: Mapeo): Promise<ResultadoAnalisis> {
   const t0 = performance.now();
@@ -561,7 +612,7 @@ export async function analizarLibro(file: File, mapeo: Mapeo): Promise<Resultado
     huerfanosVistos.add(mv.serial);
     reg.add({
       tipo: 'SERIAL_HUERFANO', severidad: 'ADVERTENCIA', hoja: mv.hoja, fila: mv.fila,
-      columna: mv.hoja === 'SALIDAS' ? 'ID DEL EQUIPO' : 'SERIAL', valor: mv.serial,
+      columna: mv.tipoHoja === 'SALIDAS' ? 'ID DEL EQUIPO' : 'SERIAL', valor: mv.serial,
       mensaje: `El serial ${mv.serial} tiene movimientos pero no está en el inventario.`,
       sugerencia: 'El movimiento se omite. Registra el equipo en el inventario y vuelve a cargarlo.',
     });
@@ -579,17 +630,17 @@ export async function analizarLibro(file: File, mapeo: Mapeo): Promise<Resultado
   };
 
   for (const e of eq.equipos) {
-    if (e.usuarioNombre) anotarPendiente(e.usuarioNombre, e.serial, 'BD_EQUIPOS');
+    if (e.usuarioNombre) anotarPendiente(e.usuarioNombre, e.serial, e.hoja.trim());
   }
   for (const mv of sal.movimientos) {
     if (mv.personaNombre && serialesConocidos.has(mv.serial)) {
-      anotarPendiente(mv.personaNombre, mv.serial, 'SALIDAS');
+      anotarPendiente(mv.personaNombre, mv.serial, mv.hoja.trim());
     }
   }
 
   for (const p of pendientes.values()) {
     reg.add({
-      tipo: 'CEDULA_FALTANTE', severidad: 'BLOQUEANTE', hoja: 'BD_EQUIPOS',
+      tipo: 'CEDULA_FALTANTE', severidad: 'BLOQUEANTE', hoja: p.origen[0] ?? '',
       columna: 'USUARIO ACTUAL', valor: p.nombre,
       mensaje: `${p.nombre} tiene ${p.seriales.length} equipo(s) a cargo pero su cédula no está en el archivo.`,
       sugerencia: 'Escríbela en el panel de revisión: sin cédula no se puede crear el colaborador.',
@@ -628,42 +679,39 @@ export async function analizarLibro(file: File, mapeo: Mapeo): Promise<Resultado
     }
   }
 
-  // --- resumen de hojas: las conocidas con datos, y el resto marcadas como ignoradas
-  const hojas: ResumenHoja[] = [];
-  const nombresManejados = new Set<string>();
-  const agregarResumen = (m: MapeoHoja | undefined, filasUtiles: number, destino: string, nota?: string) => {
-    if (!m) return;
-    nombresManejados.add(norm(m.hoja));
-    hojas.push({ nombre: m.hoja, filasLeidas: m.filas, filasUtiles, destino, ignorada: false, nota });
-  };
+  // --- resumen: una línea por hoja del libro, en el orden de las pestañas
+  const conteos = new Map<string, ConteoHoja>([...eq.conteos, ...ent.conteos, ...sal.conteos]);
+  const hojas: ResumenHoja[] = mapeo.map((m) => {
+    if (!m.tipo) {
+      const { nota, severidad } = hojaSinTipo(m);
+      reg.add({
+        tipo: 'HOJA_IGNORADA', severidad, hoja: m.hoja,
+        mensaje: severidad === 'ADVERTENCIA'
+          ? `La hoja «${m.hoja.trim()}» tiene ${m.filas} filas con datos y no se va a importar.`
+          : `La hoja «${m.hoja.trim()}» no aporta registros al inventario.`,
+        sugerencia: severidad === 'ADVERTENCIA'
+          ? 'Vuelve al paso de mapeo y dile qué tipo de hoja es, o confirma que no debe importarse.'
+          : nota,
+      });
+      return {
+        nombre: m.hoja, filasLeidas: m.filas, filasUtiles: 0,
+        destino: '—', ignorada: true, nota,
+      };
+    }
 
-  agregarResumen(mapeo.BD_EQUIPOS, eq.bd.utiles, 'Inventario de equipos',
-    eq.bd.plantilla ? `${eq.bd.plantilla} filas de plantilla omitidas` : undefined);
-  agregarResumen(mapeo.ENTRADAS, ent.movimientos.length, 'Devoluciones + colaboradores',
-    `${colaboradores.length} personas con cédula`);
-  agregarResumen(mapeo.SALIDAS, sal.movimientos.length, 'Asignaciones');
-  if (eq.claro.utiles > 0) {
-    agregarResumen(mapeo.CLARO, eq.claro.utiles, 'Inventario · comodato CLARO');
-  }
-
-  for (const nombre of wb.SheetNames) {
-    if (nombresManejados.has(norm(nombre))) continue;
-    const filas = XLSX.utils.sheet_to_json<Fila>(wb.Sheets[nombre], { defval: null, raw: false });
-    const nota = normNombre(nombre) === 'CONFIGURACION'
-      ? 'Catálogos de la hoja; se usan para validar, no se importan como registros'
-      : normNombre(nombre) === 'DASHBOARD'
-        ? 'Solo gráficos y fórmulas, sin datos propios'
-        : 'Sin filas con datos para importar';
-    hojas.push({
-      nombre, filasLeidas: filas.length, filasUtiles: 0,
-      destino: '—', ignorada: true, nota,
-    });
-    reg.add({
-      tipo: 'HOJA_IGNORADA', severidad: 'INFO', hoja: nombre,
-      mensaje: `La hoja «${nombre}» no aporta registros al inventario.`,
-      sugerencia: nota,
-    });
-  }
+    const c = conteos.get(m.hoja);
+    const utiles = c?.utiles ?? 0;
+    return {
+      nombre: m.hoja,
+      filasLeidas: m.filas,
+      filasUtiles: utiles,
+      destino: HOJA_POR_ID[m.tipo].destino,
+      ignorada: false,
+      nota: utiles === 0 && m.filas > 0
+        ? 'Ninguna fila trae serial: no aporta registros'
+        : c?.nota,
+    };
+  });
 
   return {
     archivo: file.name,
@@ -678,6 +726,12 @@ export async function analizarLibro(file: File, mapeo: Mapeo): Promise<Resultado
     cedulasEnBase,
     duracionMs: Math.round(performance.now() - t0),
   };
+}
+
+/** ¿Esta fila de equipo gana, o es la versión descartada de un serial en conflicto? */
+export function filaElegida(e: EquipoImport, conflictos: Record<string, string>): boolean {
+  const elegida = conflictos[e.serial];
+  return elegida === undefined || elegida === claveFila(e.hoja, e.fila);
 }
 
 /** Índice nombre normalizado -> cédula, mezclando el archivo y lo que escribió el usuario. */

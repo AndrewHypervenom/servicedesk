@@ -12,12 +12,13 @@ import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
 import {
-  Briefcase, Building2, CalendarDays, Hash, Laptop, Mail, MapPin, Phone, UserCog,
+  Briefcase, Building2, CalendarDays, Hash, Laptop, Mail, MapPin, Phone, Smartphone, UserCog,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useViewingPresence } from '@/lib/presence/hooks';
 import { CoeditBanner } from '@/components/presence';
-import { equiposDeColaborador } from '@/lib/api';
+import { equiposDeColaborador, lineasDeColaborador } from '@/lib/api';
+import { COLOR_CATEGORIA, categoriaEstado, fmtNumero } from '@/lib/lineas/estado';
 import { antiguedadTexto, colorEstatus, estatusLegible } from '@/lib/colaboradores/estatus';
 import { fmtDate, initials, fmtSerial } from '@/lib/format';
 import type { Colaborador } from '@/types';
@@ -60,6 +61,14 @@ export function FichaColaborador({ colaborador: c, sede, onClose, onEditar }: Pr
   const { data: equipos = [], isLoading } = useQuery({
     queryKey: ['equiposColab', c?.cedula],
     queryFn: () => equiposDeColaborador(c!.cedula),
+    enabled: !!c,
+  });
+  // Las líneas móviles a su nombre. Va aparte de los equipos a propósito: son
+  // otro inventario, con otro ciclo de vida, y el bloque solo aparece si esta
+  // persona tiene alguna (a la mayoría no se le asigna línea).
+  const { data: lineas = [] } = useQuery({
+    queryKey: ['lineasColab', c?.cedula],
+    queryFn: () => lineasDeColaborador(c!.cedula),
     enabled: !!c,
   });
 
@@ -178,6 +187,41 @@ export function FichaColaborador({ colaborador: c, sede, onClose, onEditar }: Pr
               ))}
             </ul>
           </section>
+
+          {/* Líneas móviles a su nombre. Solo si tiene: un bloque vacío aquí
+              sugeriría que le falta algo, y a casi nadie se le asigna línea. */}
+          {lineas.length > 0 && (
+            <section className="rounded-2xl border border-ink-100 dark:border-white/10 p-4">
+              <h4 className="text-xs font-semibold text-ink-500 dark:text-ink-300 mb-3 flex items-center gap-1.5">
+                <Smartphone size={13} /> {t('ficha.assignedLines')}
+                <span className="badge bg-ink-100 dark:bg-white/10 text-ink-600 dark:text-ink-200 ml-1">
+                  {lineas.length}
+                </span>
+              </h4>
+              <ul className="space-y-1.5">
+                {lineas.map((l, i) => {
+                  const cat = categoriaEstado(l.estado);
+                  return (
+                    <motion.li
+                      key={l.id}
+                      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: Math.min(i * 0.04, 0.3) }}
+                      className="flex items-center gap-3 rounded-xl bg-ink-50 dark:bg-white/5 px-3 py-2 text-sm"
+                    >
+                      <Smartphone size={15} className="text-ink-400 shrink-0" />
+                      <span className="min-w-0 truncate">
+                        <strong className="font-medium tabular-nums">{fmtNumero(l.numero)}</strong>
+                        {l.proyecto && <span className="text-ink-400"> · {l.proyecto}</span>}
+                      </span>
+                      <span className={`ml-auto badge shrink-0 ${COLOR_CATEGORIA[cat]}`}>
+                        {l.estado ?? '—'}
+                      </span>
+                    </motion.li>
+                  );
+                })}
+              </ul>
+            </section>
+          )}
         </div>
       )}
     </Modal>

@@ -17,6 +17,7 @@
     "@zxing/library": "^0.21.3",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
+    "exceljs": "^4.4.0",
     "framer-motion": "^11.5.4",
     "i18next": "^23.15.1",
     "jspdf": "^2.5.2",

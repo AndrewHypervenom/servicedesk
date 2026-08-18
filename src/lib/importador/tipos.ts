@@ -4,11 +4,18 @@ import type { HojaId } from './campos';
 /** Cómo tratar una columna del Excel que ningún campo reclamó. */
 export type ModoExtra = 'IGNORAR' | 'OBSERVACIONES';
 
+/** Quién decidió qué clase de hoja es: la detección por nombre o el usuario. */
+export type OrigenTipo = 'DETECTADO' | 'USUARIO';
+
 /** El mapeo de una hoja: qué columna del Excel alimenta cada campo del sistema. */
 export interface MapeoHoja {
   /** Nombre real de la hoja en el Excel (con tildes y espacios). */
   hoja: string;
-  /** Encabezados detectados en la hoja. */
+  /** Qué clase de hoja es. `null` = no se importa. */
+  tipo: HojaId | null;
+  /** De dónde salió `tipo`: sirve para avisar solo cuando nadie la ha revisado. */
+  tipoPor: OrigenTipo;
+  /** Encabezados detectados en la hoja (únicos: los repetidos llevan «(2)»). */
   columnas: string[];
   /** Primeros valores de cada columna, para orientar al usuario en el mapeo. */
   muestras: Record<string, string[]>;
@@ -20,8 +27,13 @@ export interface MapeoHoja {
   extras: Record<string, ModoExtra>;
 }
 
-/** El mapeo completo del libro, indexado por la hoja conocida a la que corresponde. */
-export type Mapeo = Partial<Record<HojaId, MapeoHoja>>;
+/**
+ * El mapeo completo del libro: **una entrada por hoja del archivo**, en el orden
+ * en que aparecen las pestañas. Antes era un registro indexado por clase de hoja,
+ * lo que ataba cada clase a una sola hoja y dejaba fuera —sin rastro— cualquier
+ * hoja con nombre no previsto.
+ */
+export type Mapeo = MapeoHoja[];
 
 /** Qué tan grave es lo que encontró el análisis. */
 export type Severidad =
@@ -73,6 +85,9 @@ export interface PendienteCedula {
 export interface ConflictoSerial {
   serial: string;
   opciones: Array<{
+    /** `hoja#fila`: la fila sola no identifica nada si hay varias hojas. */
+    clave: string;
+    hoja: string;
     fila: number;
     estado_asignacion: EstadoAsignacion;
     estado_fisico: EstadoFisico;
@@ -83,6 +98,8 @@ export interface ConflictoSerial {
 
 export interface EquipoImport {
   fila: number;
+  /** Nombre de la hoja de la que salió, para ubicar la fila en el archivo. */
+  hoja: string;
   serial: string;
   marca: string;
   linea_modelo: string;
@@ -109,7 +126,10 @@ export interface ColaboradorImport {
 
 export interface MovimientoImport {
   fila: number;
+  /** Nombre real de la hoja (puede haber varias de entradas o de salidas). */
   hoja: string;
+  /** Clase de hoja, que es lo que decide si el movimiento es entrada o salida. */
+  tipoHoja: Extract<HojaId, 'ENTRADAS' | 'SALIDAS'>;
   serial: string;
   tipo_movimiento: TipoMovimiento;
   fecha: string | null;
@@ -153,8 +173,8 @@ export interface ResultadoAnalisis {
 export interface Resoluciones {
   /** nombre normalizado -> cédula que escribió el usuario. */
   cedulas: Record<string, string>;
-  /** serial -> fila del Excel que gana. */
-  conflictos: Record<string, number>;
+  /** serial -> clave (`hoja#fila`) de la versión que gana. */
+  conflictos: Record<string, string>;
   /** Ubicación normalizada del Excel -> sede del sistema a la que se manda. */
   sedes: Record<string, string>;
   /** Sede para lo que no trae ubicación (colaboradores y equipos sin sede). */

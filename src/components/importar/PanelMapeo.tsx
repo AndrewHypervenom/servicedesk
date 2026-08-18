@@ -1,8 +1,12 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
-import { Check, Columns3, EyeOff, FileSpreadsheet, MessageSquareText } from 'lucide-react';
+import {
+  AlertTriangle, Check, Columns3, EyeOff, FileSpreadsheet, MessageSquareText,
+} from 'lucide-react';
 import { Select } from '@/components/ui/Select';
-import { HOJAS } from '@/lib/importador/campos';
+import { reasignarTipo } from '@/lib/importador/analizar';
+import { HOJAS, HOJA_POR_ID } from '@/lib/importador/campos';
+import type { HojaId } from '@/lib/importador/campos';
 import type { Mapeo, MapeoHoja, ModoExtra } from '@/lib/importador/tipos';
 
 interface Props {
@@ -11,6 +15,13 @@ interface Props {
 }
 
 const SIN_ASIGNAR = '';
+/** Valor del selector de clase de hoja cuando la hoja no se importa. */
+const NO_IMPORTAR = '__no__';
+
+const OPCIONES_TIPO = [
+  { value: NO_IMPORTAR, label: 'No importar esta hoja' },
+  ...HOJAS.map((h) => ({ value: h.id, label: h.etiqueta })),
+];
 
 /** Recalcula qué columnas quedan libres tras cambiar las asignaciones de campos. */
 function recomputarExtras(m: MapeoHoja): Record<string, ModoExtra> {
@@ -36,14 +47,17 @@ function CheckPop() {
   );
 }
 
-function TarjetaHoja({ hojaId, m, onCambio }: {
-  hojaId: string; m: MapeoHoja; onCambio: (m: MapeoHoja) => void;
+function TarjetaHoja({ m, onCambio }: {
+  m: MapeoHoja; onCambio: (m: MapeoHoja) => void;
 }) {
-  const def = HOJAS.find((h) => h.id === hojaId)!;
+  const def = m.tipo ? HOJA_POR_ID[m.tipo] : null;
   // En hojas de equipos el texto va a las observaciones del equipo; en las de
   // movimientos (entradas/salidas) va a la nota de ese movimiento.
-  const esHojaEquipo = hojaId === 'BD_EQUIPOS' || hojaId === 'CLARO';
+  const esHojaEquipo = m.tipo === 'BD_EQUIPOS' || m.tipo === 'CLARO';
   const dondeObs = esHojaEquipo ? 'las observaciones del equipo' : 'la nota de cada movimiento';
+  // Una hoja con datos que nadie reconoció es dato que se perdería en silencio:
+  // es el único caso en el que la tarjeta pide una decisión explícita.
+  const sinReconocer = !m.tipo && m.tipoPor === 'DETECTADO' && m.filas > 0;
 
   // Una columna asignada a dos campos a la vez es casi siempre un error de mapeo.
   const duplicadas = useMemo(() => {
@@ -71,20 +85,53 @@ function TarjetaHoja({ hojaId, m, onCambio }: {
   const extras = Object.keys(m.extras);
 
   return (
-    <div className="card overflow-hidden">
+    <div className={`card overflow-hidden ${sinReconocer ? 'border-warning/40' : ''}`}>
       <div className="px-4 py-3 border-b border-ink-100 dark:border-white/5 flex items-center gap-2.5">
-        <span className="w-7 h-7 rounded-lg grid place-items-center bg-brand-500/12 text-brand-600 dark:text-brand-400 shrink-0">
+        <span className={`w-7 h-7 rounded-lg grid place-items-center shrink-0 ${
+          def ? 'bg-brand-500/12 text-brand-600 dark:text-brand-400'
+            : 'bg-ink-100 dark:bg-white/10 text-ink-400'
+        }`}
+        >
           <FileSpreadsheet size={15} />
         </span>
         <div className="min-w-0">
-          <h4 className="text-sm font-semibold truncate">{def.etiqueta}</h4>
+          <h4 className="text-sm font-semibold truncate">{m.hoja.trim()}</h4>
           <p className="text-xs text-ink-400 truncate">
-            Hoja «{m.hoja.trim()}» · {m.filas} filas · {m.columnas.length} columnas
+            {m.filas} filas con datos · {m.columnas.length} columnas
           </p>
         </div>
-        <span className="ml-auto text-xs text-ink-400 shrink-0">→ {def.destino}</span>
+        <div className="ml-auto shrink-0 w-52">
+          {/* La clase de hoja la decide el usuario: la detección por nombre es
+              solo una propuesta y no siempre acierta. */}
+          <Select
+            value={m.tipo ?? NO_IMPORTAR}
+            onChange={(v) => onCambio(reasignarTipo(m, v === NO_IMPORTAR ? null : (v as HojaId)))}
+            options={OPCIONES_TIPO}
+            className={sinReconocer ? '!border-warning' : ''}
+          />
+        </div>
       </div>
 
+      {sinReconocer && (
+        <div className="px-4 py-2.5 flex items-start gap-2 bg-warning/[0.08] text-xs text-amber-700 dark:text-warning">
+          <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+          <p>
+            No reconocimos qué es esta hoja por su nombre, así que sus {m.filas} filas
+            no se importarían. Elige arriba qué tipo de hoja es, o déjala en
+            «No importar» si de verdad no debe entrar.
+          </p>
+        </div>
+      )}
+
+      {!def ? (
+        <p className="px-4 py-3 text-xs text-ink-400">
+          Esta hoja se deja fuera de la importación.
+        </p>
+      ) : (
+      <>
+      <p className="px-4 pt-3 text-xs text-ink-400">
+        Se importa a <span className="text-ink-600 dark:text-ink-200">{def.destino}</span>.
+      </p>
       <div className="p-4 grid sm:grid-cols-2 gap-x-5 gap-y-3">
         {def.campos.map((campo) => {
           const col = m.campos[campo.id];
@@ -184,28 +231,46 @@ function TarjetaHoja({ hojaId, m, onCambio }: {
           </div>
         </div>
       )}
+      </>
+      )}
     </div>
   );
 }
 
 export function PanelMapeo({ mapeo, onMapeo }: Props) {
-  // Se muestran en el orden canónico de HOJAS, solo las que el archivo trae.
-  const hojas = HOJAS.filter((h) => mapeo[h.id]).map((h) => h.id);
+  // Una tarjeta por hoja del archivo, en el orden de las pestañas del Excel:
+  // así ninguna hoja desaparece sin que el usuario la vea.
+  const sinReconocer = mapeo.filter((m) => !m.tipo && m.tipoPor === 'DETECTADO' && m.filas > 0);
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-ink-400">
-        Leímos las columnas de tu Excel y adivinamos a qué dato del sistema corresponde cada una
-        (la ✓ verde marca las que ya quedaron listas). Revisa que estén bien: puedes cambiar la
-        columna de cualquier campo, y decidir qué hacer con las columnas que sobran. Así nada se
-        importa mal ni se pierde sin que te enteres.
+        Estas son todas las hojas de tu Excel. Para cada una adivinamos qué es y a qué dato del
+        sistema corresponde cada columna (la ✓ verde marca las que ya quedaron listas). Revisa
+        que esté bien: puedes cambiar el tipo de una hoja, la columna de cualquier campo y qué
+        hacer con las columnas que sobran. Así nada se importa mal ni se pierde sin que te enteres.
       </p>
-      {hojas.map((id) => (
+
+      {sinReconocer.length > 0 && (
+        <div className="flex items-start gap-3 rounded-xl border border-warning/30 bg-warning/[0.08] p-4 text-sm">
+          <AlertTriangle size={18} className="shrink-0 mt-0.5 text-amber-600 dark:text-warning" />
+          <div>
+            <p className="font-medium text-amber-700 dark:text-warning">
+              {sinReconocer.length === 1 ? 'Una hoja con datos sin reconocer' : `${sinReconocer.length} hojas con datos sin reconocer`}
+            </p>
+            <p className="mt-0.5 text-ink-500 dark:text-ink-300">
+              {sinReconocer.map((m) => `«${m.hoja.trim()}»`).join(', ')} trae{sinReconocer.length === 1 ? '' : 'n'} filas
+              con datos pero su nombre no coincide con ninguna hoja conocida. Dinos qué son o quedarán fuera.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {mapeo.map((m, i) => (
         <TarjetaHoja
-          key={id}
-          hojaId={id}
-          m={mapeo[id]!}
-          onCambio={(nm) => onMapeo({ ...mapeo, [id]: nm })}
+          key={m.hoja}
+          m={m}
+          onCambio={(nm) => onMapeo(mapeo.map((x, j) => (j === i ? nm : x)))}
         />
       ))}
     </div>
