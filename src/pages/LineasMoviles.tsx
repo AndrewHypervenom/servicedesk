@@ -65,6 +65,7 @@ import { paletaPara } from '@/lib/paletaGraficos';
 import { useEsOscuro } from '@/lib/useEsOscuro';
 import { fmtDateTime } from '@/lib/format';
 import { useApp } from '@/store/useApp';
+import { ordenarSedesPorPais, useFiltroPais } from '@/lib/pais';
 import type { Colaborador, LineaMovil, Sede } from '@/types';
 
 const PASO_VISIBLES = 40;
@@ -109,6 +110,8 @@ export function LineasMoviles() {
   });
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
   const { data: colabs = [] } = useQuery({ queryKey: ['colabs'], queryFn: listColaboradores });
+  // País de quien mira: el listado abre en el suyo y sus sedes van primero.
+  const pais = useFiltroPais();
 
   const porCedula = useMemo(
     () => new Map(colabs.map((c) => [c.cedula, c])), [colabs],
@@ -188,6 +191,7 @@ export function LineasMoviles() {
     };
 
     const res = alcance.filter((l) => {
+      if (!pais.incluye(l.sede_id)) return false;
       if (categoria && categoriaEstado(l.estado) !== categoria) return false;
       if (proyecto && l.proyecto !== proyecto) return false;
       if (cr && l.cr !== cr) return false;
@@ -207,10 +211,10 @@ export function LineasMoviles() {
     });
 
     return [...res].sort(cmp[orden]);
-  }, [alcance, terminos, categoria, proyecto, cr, sedeF, hojaF, soloSinTitular, soloSinNumero, orden, porCedula]);
+  }, [alcance, terminos, pais, categoria, proyecto, cr, sedeF, hojaF, soloSinTitular, soloSinNumero, orden, porCedula]);
 
   useEffect(() => { setVisibles(PASO_VISIBLES); },
-    [qDiferida, categoria, proyecto, cr, sedeF, hojaF, soloSinTitular, soloSinNumero, orden]);
+    [qDiferida, pais.valor, categoria, proyecto, cr, sedeF, hojaF, soloSinTitular, soloSinNumero, orden]);
 
   // Carga la siguiente tanda al llegar al final del listado.
   const centinela = useRef<HTMLDivElement>(null);
@@ -225,9 +229,9 @@ export function LineasMoviles() {
   }, [filtradas.length]);
 
   const mostradas = filtradas.slice(0, visibles);
-  const hayFiltros = !!(q || categoria || proyecto || cr || sedeF || hojaF || soloSinTitular || soloSinNumero);
+  const hayFiltros = !!(q || categoria || proyecto || cr || pais.activo || sedeF || hojaF || soloSinTitular || soloSinNumero);
   const limpiar = () => {
-    setQ(''); setCategoria(''); setProyecto(''); setCr(''); setSedeF(''); setHojaF('');
+    setQ(''); setCategoria(''); setProyecto(''); setCr(''); pais.setValor(''); setSedeF(''); setHojaF('');
     setSoloSinTitular(false); setSoloSinNumero(false);
   };
 
@@ -566,6 +570,7 @@ export function LineasMoviles() {
     categoria && { id: 'cat', texto: t(ETIQUETA_CATEGORIA[categoria]), quitar: () => setCategoria('') },
     proyecto && { id: 'proy', texto: proyecto, quitar: () => setProyecto('') },
     cr && { id: 'cr', texto: `CR ${cr}`, quitar: () => setCr('') },
+    pais.activo && { id: 'pais', texto: pais.etiqueta ?? '', quitar: () => pais.setValor('') },
     sedeF && {
       id: 'sede',
       texto: sedeF === SIN_SEDE ? t('lines.noSede') : (sedes.find((s) => s.id === sedeF)?.nombre ?? ''),
@@ -673,11 +678,14 @@ export function LineasMoviles() {
               className="!w-auto min-w-[8rem]" value={cr} onChange={setCr} placeholder="CR"
               options={[{ value: '', label: t('lines.allCr') }, ...opcionesDe(alcance, 'cr', t('lines.linesCount'))]}
             />
+            {pais.mostrar && (
+              <Select className="!w-auto min-w-[8.5rem]" value={pais.valor} onChange={pais.setValor} options={pais.opciones} />
+            )}
             <Select
               className="!w-auto min-w-[9rem]" value={sedeF} onChange={setSedeF} placeholder={t('users.sede')}
               options={[
                 { value: '', label: t('lines.allSedes') },
-                ...sedes.map(sedeOption),
+                ...ordenarSedesPorPais(sedes, pais.paisPropio).map(sedeOption),
                 { value: SIN_SEDE, label: t('lines.noSede') },
               ]}
             />

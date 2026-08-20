@@ -22,6 +22,7 @@ import { ImportarModal } from '@/components/importar/ImportarModal';
 import { ResourcePeersChip } from '@/components/presence';
 import { useApp } from '@/store/useApp';
 import { scopeEquipos } from '@/lib/roles';
+import { useFiltroPais } from '@/lib/pais';
 import type { Equipo } from '@/types';
 
 export function Inventario() {
@@ -29,6 +30,9 @@ export function Inventario() {
   const { canEdit, can, perfil, misSedes } = useApp();
   const { data: equiposRaw = [], refetch, isLoading } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
   const equipos = useMemo(() => scopeEquipos(equiposRaw, perfil, misSedes), [equiposRaw, perfil, misSedes]);
+  // País: arranca en el del perfil y se puede abrir a todos. No recorta
+  // permisos —eso ya lo hizo `scopeEquipos`—, solo lo que se mira primero.
+  const pais = useFiltroPais();
   const puedeEditar = can('ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO');
 
   const [q, setQ] = useState('');
@@ -43,12 +47,13 @@ export function Inventario() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [bulkBusy, setBulkBusy] = useState(false);
 
-  const hayFiltros = !!(q.trim() || fEstado || fTipo || fProp || fContrato);
-  const limpiarFiltros = () => { setQ(''); setFEstado(''); setFTipo(''); setFProp(''); setFContrato(''); };
+  const hayFiltros = !!(q.trim() || fEstado || fTipo || fProp || fContrato || pais.activo);
+  const limpiarFiltros = () => { setQ(''); setFEstado(''); setFTipo(''); setFProp(''); setFContrato(''); pais.setValor(''); };
 
   const filtered = useMemo(() => {
     const s = q.trim().toLowerCase();
     return equipos.filter((e) => {
+      if (!pais.incluye(e.sede_id)) return false;
       if (fEstado && e.estado_asignacion !== fEstado) return false;
       if (fTipo && e.tipo !== fTipo) return false;
       if (fProp && e.proveedor_propietario !== fProp) return false;
@@ -58,7 +63,7 @@ export function Inventario() {
       return [e.serial, e.marca, e.linea_modelo, e.codigo_qr, e.proyecto_asignado, e.descripcion_completa]
         .some((v) => v?.toLowerCase().includes(s));
     });
-  }, [equipos, q, fEstado, fTipo, fProp, fContrato]);
+  }, [equipos, q, fEstado, fTipo, fProp, fContrato, pais]);
 
   // Se cuentan sobre el alcance del usuario, no sobre lo filtrado: el atajo
   // tiene que seguir visible aunque los filtros actuales no muestren ninguno.
@@ -197,6 +202,9 @@ export function Inventario() {
             <input className="input pl-11" placeholder={t('common.searchSerial')} value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <div className="flex gap-2 flex-wrap">
+            {pais.mostrar && (
+              <Select value={pais.valor} onChange={pais.setValor} className="!w-auto" options={pais.opciones} />
+            )}
             <Select
               value={fEstado}
               onChange={setFEstado}

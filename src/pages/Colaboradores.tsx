@@ -50,6 +50,7 @@ import { colorEstatus, esEstatusActivo, estatusLegible } from '@/lib/colaborador
 import { exportRowsExcel } from '@/lib/excel';
 import { fmtDate, initials } from '@/lib/format';
 import { useApp } from '@/store/useApp';
+import { ordenarSedesPorPais, useFiltroPais } from '@/lib/pais';
 import type { Colaborador, Sede } from '@/types';
 
 const PASO_VISIBLES = 30;
@@ -114,6 +115,9 @@ export function Colaboradores() {
   });
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
   const nombreSede = (c: Colaborador) => sedes.find((s) => s.id === c.sede_id)?.nombre ?? c.sede ?? null;
+  // País de quien mira: filtra la planta y adelanta sus sedes en el desplegable.
+  const pais = useFiltroPais();
+  const sedesOrdenadas = useMemo(() => ordenarSedesPorPais(sedes, pais.paisPropio), [sedes, pais.paisPropio]);
 
   // ------------------------------------------------------------- filtros
   const [q, setQ] = useState('');
@@ -180,6 +184,7 @@ export function Colaboradores() {
     for (const c of colabs) {
       if (estado === 'activos' && !activo(c)) continue;
       if (estado === 'inactivos' && activo(c)) continue;
+      if (!pais.incluye(c.sede_id)) continue;
       if (sedeF === SIN_SEDE ? !!c.sede_id : sedeF && c.sede_id !== sedeF) continue;
       if (ciudad && c.ciudad !== ciudad) continue;
       if (area && c.area !== area) continue;
@@ -203,7 +208,7 @@ export function Colaboradores() {
     res.sort((a, b) => Number(b.directo) - Number(a.directo) || cmp[orden](a.colaborador, b.colaborador));
 
     return { resultados: res, directos: res.reduce((n, r) => n + (r.directo ? 1 : 0), 0) };
-  }, [colabs, indice, terminos, estado, sedeF, ciudad, area, contrato, orden]);
+  }, [colabs, indice, terminos, estado, pais, sedeF, ciudad, area, contrato, orden]);
 
   const filtrados = useMemo(() => resultados.map((r) => r.colaborador), [resultados]);
   /** El porqué de cada fila, para explicarlo donde se pinta. */
@@ -215,7 +220,7 @@ export function Colaboradores() {
 
   // Cualquier cambio de filtro reinicia la tanda: quedarse en la página 4 de un
   // resultado que ya no existe desorienta más de lo que ahorra.
-  useEffect(() => { setVisibles(PASO_VISIBLES); }, [qDiferida, estado, sedeF, ciudad, area, contrato, orden]);
+  useEffect(() => { setVisibles(PASO_VISIBLES); }, [qDiferida, estado, pais.valor, sedeF, ciudad, area, contrato, orden]);
 
   // Carga la siguiente tanda al llegar al final del listado.
   const centinela = useRef<HTMLDivElement>(null);
@@ -230,8 +235,8 @@ export function Colaboradores() {
   }, [filtrados.length]);
 
   const mostrados = filtrados.slice(0, visibles);
-  const hayFiltros = !!(q || estado !== 'todos' || sedeF || ciudad || area || contrato);
-  const limpiar = () => { setQ(''); setEstado('todos'); setSedeF(''); setCiudad(''); setArea(''); setContrato(''); };
+  const hayFiltros = !!(q || estado !== 'todos' || pais.activo || sedeF || ciudad || area || contrato);
+  const limpiar = () => { setQ(''); setEstado('todos'); pais.setValor(''); setSedeF(''); setCiudad(''); setArea(''); setContrato(''); };
 
   const exportar = () => {
     exportRowsExcel(
@@ -455,11 +460,14 @@ export function Colaboradores() {
                 { value: 'inactivos', label: t('collaborators.onlyInactive') },
               ]}
             />
+            {pais.mostrar && (
+              <Select className="!w-auto min-w-[8.5rem]" value={pais.valor} onChange={pais.setValor} options={pais.opciones} />
+            )}
             <Select
               className="!w-auto min-w-[9rem]" value={sedeF} onChange={setSedeF} placeholder={t('users.sede')}
               options={[
                 { value: '', label: t('collaborators.allSedes') },
-                ...sedes.map(sedeOption),
+                ...sedesOrdenadas.map(sedeOption),
                 { value: SIN_SEDE, label: t('collaborators.noSede') },
               ]}
             />

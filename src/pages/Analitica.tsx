@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
@@ -11,6 +11,7 @@ import { listEquipos, listSedes, movimientosDesde } from '@/lib/api';
 import { scopeEquipos } from '@/lib/roles';
 import { contratoPorVencer, contratoVencido } from '@/lib/estados';
 import { useApp } from '@/store/useApp';
+import { ordenarSedesPorPais, useFiltroPais } from '@/lib/pais';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { NumeroAnimado } from '@/components/ui/NumeroAnimado';
 import { GraficoCard, type GraficoHandle } from '@/components/analitica/GraficoCard';
@@ -58,12 +59,29 @@ export function Analitica() {
   const alcance = useMemo(() => scopeEquipos(equiposRaw, perfil, misSedes), [equiposRaw, perfil, misSedes]);
 
   // ── Filtros ───────────────────────────────────────────────────────────
+  // El país arranca en el de quien mira: los KPIs y los gráficos hablan de su
+  // parque, no de la suma de dos países que no se comparan entre sí. Sigue
+  // pudiendo abrirse a "Todos los países" desde el mismo desplegable.
+  const pais = useFiltroPais();
   const [sedeFiltro, setSedeFiltro] = useState<string>('');
   const [tipoFiltro, setTipoFiltro] = useState<string>('');
 
   const equipos = useMemo(() => alcance.filter((e) =>
-    (!sedeFiltro || e.sede_id === sedeFiltro) && (!tipoFiltro || e.tipo === tipoFiltro),
-  ), [alcance, sedeFiltro, tipoFiltro]);
+    pais.incluye(e.sede_id) && (!sedeFiltro || e.sede_id === sedeFiltro) && (!tipoFiltro || e.tipo === tipoFiltro),
+  ), [alcance, pais, sedeFiltro, tipoFiltro]);
+
+  // Las sedes que se ofrecen siguen al país elegido; sin país, las propias
+  // primero. Una sede de otro país en la lista solo sirve para vaciar la vista.
+  const sedesElegibles = useMemo(
+    () => (pais.valor ? sedes.filter((s) => s.pais_id === pais.valor) : ordenarSedesPorPais(sedes, pais.paisPropio)),
+    [sedes, pais.valor, pais.paisPropio],
+  );
+
+  // Cambiar de país con una sede de otro país seleccionada dejaría los gráficos
+  // en blanco sin explicar por qué: se suelta el filtro de sede.
+  useEffect(() => {
+    if (sedeFiltro && !sedesElegibles.some((s) => s.id === sedeFiltro)) setSedeFiltro('');
+  }, [sedeFiltro, sedesElegibles]);
 
   const tipos = useMemo(() => Array.from(new Set(alcance.map((e) => e.tipo))).sort(), [alcance]);
   const nombreSede = useMemo(() => {
@@ -235,18 +253,24 @@ export function Analitica() {
       {/* Filtros en una sola fila sobre los gráficos, no repartidos por tarjeta:
           así se ve de un vistazo qué recorte se está mirando. */}
       <div className="card p-3 mb-6 flex flex-wrap items-center gap-3">
+        {pais.mostrar && (
+          <select value={pais.valor} onChange={(e) => pais.setValor(e.target.value)}
+            className="input !w-auto min-w-[11rem]" aria-label={t('common.country')}>
+            {pais.opciones.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+          </select>
+        )}
         <select value={sedeFiltro} onChange={(e) => setSedeFiltro(e.target.value)}
           className="input !w-auto min-w-[11rem]" aria-label={t('analytics.filterBySede')}>
           <option value="">{t('analytics.allSedes')}</option>
-          {sedes.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
+          {sedesElegibles.map((s) => <option key={s.id} value={s.id}>{s.nombre}</option>)}
         </select>
         <select value={tipoFiltro} onChange={(e) => setTipoFiltro(e.target.value)}
           className="input !w-auto min-w-[11rem]" aria-label={t('analytics.filterByTipo')}>
           <option value="">{t('analytics.allTypes')}</option>
           {tipos.map((tp) => <option key={tp} value={tp}>{t(`tipo.${tp}`)}</option>)}
         </select>
-        {(sedeFiltro || tipoFiltro) && (
-          <button onClick={() => { setSedeFiltro(''); setTipoFiltro(''); }} className="btn-ghost text-sm">
+        {(pais.activo || sedeFiltro || tipoFiltro) && (
+          <button onClick={() => { pais.setValor(''); setSedeFiltro(''); setTipoFiltro(''); }} className="btn-ghost text-sm">
             {t('common.clearFilters')}
           </button>
         )}

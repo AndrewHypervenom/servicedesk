@@ -65,6 +65,7 @@ import { exportarPdf } from '@/lib/exportarGrafico';
 import { useEsOscuro } from '@/lib/useEsOscuro';
 import { fmtDate } from '@/lib/format';
 import { useApp } from '@/store/useApp';
+import { ordenarSedesPorPais, useFiltroPais } from '@/lib/pais';
 import type { EstadoTicket, PrioridadTicket, Sede, Ticket } from '@/types';
 
 const PASO_VISIBLES = 40;
@@ -143,6 +144,9 @@ export function Tickets() {
     const m = new Map(sedes.map((s) => [s.id, s.nombre]));
     return (id?: string | null) => (id ? m.get(id) ?? null : null);
   }, [sedes]);
+
+  // País de quien mira: el control abre en el suyo y sus sedes van primero.
+  const pais = useFiltroPais();
 
   // ------------------------------------------------------------- alcance
   const alcance = useMemo(() => {
@@ -261,6 +265,7 @@ export function Tickets() {
    * El foco es la profundización: se aplica solo a la lista que se enseña.
    */
   const base = useMemo(() => alcance.filter((x) => {
+    if (!pais.incluye(x.sede_id)) return false;
     if (periodo && x.periodo !== periodo) return false;
     if (prioridad && x.prioridad !== prioridad) return false;
     if (analista && claveAnalista(x) !== analista) return false;
@@ -274,7 +279,7 @@ export function Tickets() {
       nombreAnalista(x.analista_id), nombreSede(x.sede_id), x.hoja_origen,
     ].filter(Boolean).join(' '));
     return terminos.every((tm) => heno.includes(tm));
-  }), [alcance, terminos, periodo, prioridad, analista, sedeF, nombreAnalista, nombreSede]);
+  }), [alcance, terminos, pais, periodo, prioridad, analista, sedeF, nombreAnalista, nombreSede]);
 
   const kpis = useMemo(() => {
     let abiertos = 0; let completados = 0; let atrasados = 0;
@@ -316,7 +321,7 @@ export function Tickets() {
   }, [base, foco, orden]);
 
   useEffect(() => { setVisibles(PASO_VISIBLES); },
-    [qDiferida, periodo, foco, prioridad, analista, sedeF, orden]);
+    [qDiferida, pais.valor, periodo, foco, prioridad, analista, sedeF, orden]);
 
   // Carga la siguiente tanda al llegar al final del listado.
   const centinela = useRef<HTMLDivElement>(null);
@@ -333,9 +338,9 @@ export function Tickets() {
   const mostrados = filtrados.slice(0, visibles);
   /** Tabla y tarjetas enseñan filas —y por eso paginan—; panel y gráficos, el conjunto. */
   const esListado = vista === 'tabla' || vista === 'tarjetas';
-  const hayFiltros = !!(q || periodo || foco || prioridad || analista || sedeF);
+  const hayFiltros = !!(q || periodo || foco || prioridad || analista || pais.activo || sedeF);
   const limpiar = () => {
-    setQ(''); setPeriodo(''); setFoco(''); setPrioridad(''); setAnalista(''); setSedeF('');
+    setQ(''); setPeriodo(''); setFoco(''); setPrioridad(''); setAnalista(''); pais.setValor(''); setSedeF('');
   };
 
   // -------------------------------------------------------------- series
@@ -695,6 +700,7 @@ export function Tickets() {
       texto: analistas.find(([k]) => k === analista)?.[1].label ?? '',
       quitar: () => setAnalista(''),
     },
+    pais.activo && { id: 'pais', texto: pais.etiqueta ?? '', quitar: () => pais.setValor('') },
     sedeF && {
       id: 'sede',
       texto: sedeF === SIN_SEDE ? t('tickets.noSede') : (sedes.find((s) => s.id === sedeF)?.nombre ?? ''),
@@ -876,12 +882,15 @@ export function Tickets() {
               })),
             ]}
           />
+          {pais.mostrar && (
+            <Select className="!w-auto min-w-[8.5rem]" value={pais.valor} onChange={pais.setValor} options={pais.opciones} />
+          )}
           <Select
             className="!w-auto min-w-[9rem]" value={sedeF} onChange={setSedeF}
             placeholder={t('users.sede')}
             options={[
               { value: '', label: t('tickets.allSedes') },
-              ...sedes.map(sedeOption),
+              ...ordenarSedesPorPais(sedes, pais.paisPropio).map(sedeOption),
               { value: SIN_SEDE, label: t('tickets.noSede') },
             ]}
           />

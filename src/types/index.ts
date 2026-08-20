@@ -305,6 +305,12 @@ export interface Perfil {
   activo: boolean;
   avatar_url?: string | null;
   sede_id?: string | null;
+  /**
+   * País desde el que trabaja la persona. No da acceso a nada: el alcance real
+   * se asigna en `perfil_paises`. Sirve para que las pantallas abran filtradas
+   * por su país y las listas de sedes pongan las suyas primero.
+   */
+  pais_id?: string | null;
   debe_cambiar_password?: boolean | null;
   firma_data?: string | null;
 }

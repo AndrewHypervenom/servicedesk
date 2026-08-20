@@ -66,8 +66,12 @@ export function Topbar({ onMenu }: { onMenu: () => void }) {
 
       <div className="relative">
         <button onClick={() => setMenu((v) => !v)} className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-ink-100/70 dark:hover:bg-white/5">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center text-xs font-bold">
-            {initials(perfil?.nombre)}
+          <div className="w-8 h-8 rounded-full overflow-hidden bg-gradient-to-br from-brand-400 to-brand-600 text-white grid place-items-center text-xs font-bold">
+            {/* Las iniciales son el respaldo de siempre: quien no ha subido
+                foto sigue viendo exactamente lo mismo que antes. */}
+            {perfil?.avatar_url
+              ? <img src={perfil.avatar_url} alt="" className="w-full h-full object-cover" />
+              : initials(perfil?.nombre)}
           </div>
           <div className="hidden sm:block text-left leading-tight">
             <div className="text-sm font-medium">{perfil?.nombre}</div>

@@ -122,7 +122,9 @@
     "crashDesc": "Ocurrió un error al pintar la pantalla. El detalle de abajo indica qué falló; puedes reintentar o cambiar de vista.",
     "continue": "Continuar",
     "show": "Ver",
-    "hide": "Ocultar"
+    "hide": "Ocultar",
+    "country": "País",
+    "myCountry": "Tu país"
   },
   "auth": {
     "login": "Iniciar sesión",
@@ -1045,7 +1047,22 @@
     "changePassword": "Cambiar contraseña",
     "passwordUpdated": "Contraseña actualizada",
     "passwordMin": "La contraseña debe tener al menos 6 caracteres",
-    "passwordMismatch": "Las contraseñas no coinciden"
+    "passwordMismatch": "Las contraseñas no coinciden",
+    "country": "País",
+    "countryHint": "Desde qué país trabajas. Las pantallas abrirán filtradas por él y tus sedes saldrán primero. No cambia tus permisos: el alcance lo asigna el administrador.",
+    "countryNone": "Sin definir",
+    "countrySaved": "País actualizado",
+    "photo": "Foto de perfil",
+    "photoHint": "Se ve en la barra superior y junto a tu nombre cuando trabajas con otros. Se recorta cuadrada y se reduce a 256 px.",
+    "uploadPhoto": "Subir una foto",
+    "changePhoto": "Cambiar foto",
+    "removePhoto": "Quitar foto",
+    "photoFormats": "JPG, PNG o WEBP · máx. 5 MB",
+    "photoUpdated": "Foto actualizada",
+    "photoRemoved": "Foto eliminada",
+    "photoInvalid": "El archivo debe ser una imagen (JPG, PNG o WEBP)",
+    "photoTooLarge": "La imagen es demasiado grande (máx. 5 MB)",
+    "photoFailed": "No se pudo subir la foto"
   },
   "update": {
     "title": "Hay una versión nueva del sitio",

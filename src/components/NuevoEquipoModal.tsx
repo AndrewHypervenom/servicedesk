@@ -11,6 +11,7 @@ import { Select } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { useApp } from '@/store/useApp';
+import { ordenarSedesPorPais } from '@/lib/pais';
 import { useEditingPresence } from '@/lib/presence/hooks';
 import { CoeditBanner } from '@/components/presence';
 import type { Equipo } from '@/types';
@@ -58,7 +59,7 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
   open: boolean; onClose: () => void; onSaved: () => void; equipo?: Equipo;
 }) {
   const { t } = useTranslation();
-  const { operaTodasLasSedes, misSedes } = useApp();
+  const { operaTodasLasSedes, misSedes, perfil } = useApp();
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
   const { data: marcas = [] } = useQuery({ queryKey: ['marcas'], queryFn: listMarcas });
   const { data: proveedores = [] } = useQuery({ queryKey: ['proveedores'], queryFn: listProveedores });
@@ -71,7 +72,13 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
   const sedeFija = sedesElegibles.length <= 1 && !operaTodasLasSedes();
   // La sede que se preselecciona al crear: la única de su alcance, si es que
   // tiene una sola. Con varias se elige a mano para no colar un dato por defecto.
-  const sedePorDefecto = sedesElegibles.length === 1 ? sedesElegibles[0].id : null;
+  // Con varias sedes se elige a mano para no colar un dato por defecto; la
+  // excepción es tener una sola en el país propio, que es la misma situación:
+  // no hay ambigüedad que resolver.
+  const sedesDelPaisPropio = perfil?.pais_id ? sedesElegibles.filter((s) => s.pais_id === perfil.pais_id) : [];
+  const sedePorDefecto = sedesElegibles.length === 1
+    ? sedesElegibles[0].id
+    : (sedesDelPaisPropio.length === 1 ? sedesDelPaisPropio[0].id : null);
   const editando = !!equipo;
 
   // Solo la edición de un equipo existente es un recurso concreto que puede
@@ -99,7 +106,9 @@ export function NuevoEquipoModal({ open, onClose, onSaved, equipo }: {
   // ajena no me corresponde.
   const sedeFueraDeAlcance = !!f.sede_id && !sedesElegibles.some((s) => s.id === f.sede_id);
   const sedeActual = sedeFueraDeAlcance ? sedes.filter((s) => s.id === f.sede_id) : [];
-  const opcionesSede = [...sedesElegibles, ...sedeActual];
+  // Las sedes del país propio primero: quien registra en Colombia no tiene por
+  // qué recorrer las de otro país para llegar a la suya.
+  const opcionesSede = [...ordenarSedesPorPais(sedesElegibles, perfil?.pais_id), ...sedeActual];
   const esPortatil = (f.tipo ?? 'PORTATIL') === 'PORTATIL';
 
   // Solo el portátil se identifica por modelo y serial; monitores, cargadores,

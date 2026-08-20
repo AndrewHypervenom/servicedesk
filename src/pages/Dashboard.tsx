@@ -14,12 +14,14 @@ import { listEquipos, recentMovimientos } from '@/lib/api';
 import { fmtDate, fmtSerial } from '@/lib/format';
 import { diasDeContrato } from '@/lib/estados';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { Select } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonStats, SkeletonChart, SkeletonText } from '@/components/ui/Skeleton';
 import { NumeroAnimado } from '@/components/ui/NumeroAnimado';
 import { paletaPara } from '@/lib/paletaGraficos';
 import { useEsOscuro } from '@/lib/useEsOscuro';
 import { useApp } from '@/store/useApp';
+import { useFiltroPais } from '@/lib/pais';
 import { scopeEquipos } from '@/lib/roles';
 
 /**
@@ -50,7 +52,11 @@ export function Dashboard() {
   const { t, i18n } = useTranslation();
   const { canEdit, perfil, misSedes } = useApp();
   const { data: equiposRaw = [], isLoading } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
-  const equipos = useMemo(() => scopeEquipos(equiposRaw, perfil, misSedes), [equiposRaw, perfil, misSedes]);
+  const alcance = useMemo(() => scopeEquipos(equiposRaw, perfil, misSedes), [equiposRaw, perfil, misSedes]);
+  // El tablero abre en el país de quien mira: "cuántos equipos tengo" es una
+  // pregunta sobre su parque. El desplegable de la cabecera lo abre a todos.
+  const pais = useFiltroPais();
+  const equipos = useMemo(() => alcance.filter((e) => pais.incluye(e.sede_id)), [alcance, pais]);
   const { data: movs = [], isLoading: loadingMovs } = useQuery({ queryKey: ['recentMov'], queryFn: () => recentMovimientos(6) });
 
   const oscuro = useEsOscuro();
@@ -111,7 +117,12 @@ export function Dashboard() {
 
   return (
     <div>
-      <PageHeader title={t('dashboard.title')} subtitle={t('dashboard.subtitle')} icon={LayoutDashboard} />
+      <PageHeader
+        title={t('dashboard.title')} subtitle={t('dashboard.subtitle')} icon={LayoutDashboard}
+        action={pais.mostrar
+          ? <Select className="!w-auto min-w-[10rem]" value={pais.valor} onChange={pais.setValor} options={pais.opciones} />
+          : undefined}
+      />
 
       {isLoading ? <SkeletonStats /> : (
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">

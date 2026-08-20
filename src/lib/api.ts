@@ -581,6 +581,43 @@ export async function subirActaFirmada(actaId: string, file: File): Promise<stri
   return data.publicUrl;
 }
 
+/**
+ * Sube la foto de perfil y devuelve su URL pública.
+ *
+ * La ruta lleva el id del usuario como carpeta porque de ahí cuelga el permiso:
+ * la política del bucket `avatares` deja escribir solo dentro de la carpeta que
+ * se llama como tu id. El nombre del archivo lleva la fecha para que el
+ * navegador y la CDN no sigan sirviendo la foto anterior; las que quedan atrás
+ * se borran a continuación, que es lo que evita acumular una foto por cambio.
+ */
+export async function subirAvatar(perfilId: string, imagen: Blob): Promise<string> {
+  const path = `${perfilId}/avatar-${Date.now()}.jpg`;
+  const { error } = await supabase.storage.from('avatares')
+    .upload(path, imagen, { upsert: true, contentType: 'image/jpeg', cacheControl: '3600' });
+  if (error) throw error;
+
+  // Las anteriores estorban pero no rompen nada: si el borrado falla, la foto
+  // nueva ya está subida y es la que vale.
+  const { data: previas } = await supabase.storage.from('avatares').list(perfilId);
+  const sobran = (previas ?? [])
+    .map((f) => `${perfilId}/${f.name}`)
+    .filter((r) => r !== path);
+  if (sobran.length) await supabase.storage.from('avatares').remove(sobran);
+
+  const { data } = supabase.storage.from('avatares').getPublicUrl(path);
+  return data.publicUrl;
+}
+
+/** Quita la foto: primero los archivos, luego el enlace en el perfil. */
+export async function borrarAvatar(perfilId: string): Promise<void> {
+  const { data: archivos } = await supabase.storage.from('avatares').list(perfilId);
+  const rutas = (archivos ?? []).map((f) => `${perfilId}/${f.name}`);
+  if (rutas.length) {
+    const { error } = await supabase.storage.from('avatares').remove(rutas);
+    if (error) throw error;
+  }
+}
+
 export async function listActas(): Promise<Acta[]> {
   const { data } = await supabase.from('actas').select('*').order('creado_en', { ascending: false });
   return (data as Acta[]) ?? [];
