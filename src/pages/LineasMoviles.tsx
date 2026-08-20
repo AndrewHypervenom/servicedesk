@@ -22,7 +22,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer,
   Cell, LabelList,
@@ -32,6 +32,7 @@ import {
   Loader2, MapPin, Package, Pencil, Plus, Signal, Smartphone, Table2, Trash2, Upload, User,
   UserCheck, X,
 } from 'lucide-react';
+import { BarraFiltros, type CampoFiltro, type ChipFiltro } from '@/components/ui/BarraFiltros';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Modal } from '@/components/ui/Modal';
@@ -40,7 +41,6 @@ import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { NumeroAnimado } from '@/components/ui/NumeroAnimado';
 import { Resaltado } from '@/components/ui/Resaltado';
-import { SearchInput } from '@/components/ui/SearchInput';
 import { SkeletonGrid } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { GraficoCard, type GraficoHandle } from '@/components/analitica/GraficoCard';
@@ -566,7 +566,63 @@ export function LineasMoviles() {
     { id: 'sinNumero', label: t('lines.kpiNoNumber'), n: kpis.sinNumero, icon: Package, tono: 'from-violet-400 to-violet-600', al: () => setSoloSinNumero(true) },
   ];
 
-  const chips: { id: string; texto: string; quitar: () => void }[] = [
+  const campos: CampoFiltro[] = [
+    {
+      id: 'estado', label: t('common.status'), value: categoria, activo: !!categoria,
+      onChange: (v) => setCategoria(v as CategoriaLinea | ''),
+      options: [
+        { value: '', label: t('lines.allStates') },
+        ...CATEGORIAS.map((c) => ({ value: c, label: t(ETIQUETA_CATEGORIA[c]) })),
+      ],
+    },
+    {
+      id: 'proyecto', label: t('lines.fProyecto'), value: proyecto, onChange: setProyecto, activo: !!proyecto,
+      options: [{ value: '', label: t('lines.allProjects') }, ...opcionesDe(alcance, 'proyecto', t('lines.linesCount'))],
+    },
+    {
+      id: 'cr', label: 'CR', value: cr, onChange: setCr, activo: !!cr,
+      options: [{ value: '', label: t('lines.allCr') }, ...opcionesDe(alcance, 'cr', t('lines.linesCount'))],
+    },
+    ...(pais.mostrar ? [{
+      id: 'pais', label: t('common.country'), value: pais.valor, onChange: pais.setValor,
+      options: pais.opciones, activo: pais.activo,
+    }] : []),
+    {
+      id: 'sede', label: t('users.sede'), value: sedeF, onChange: setSedeF, activo: !!sedeF,
+      options: [
+        { value: '', label: t('lines.allSedes') },
+        ...ordenarSedesPorPais(sedes, pais.paisPropio).map(sedeOption),
+        { value: SIN_SEDE, label: t('lines.noSede') },
+      ],
+    },
+    // La hoja del libro de la que salió cada línea. Solo aparece si de verdad
+    // vinieron de varias: con una sola no dice nada.
+    ...(hojas.length > 1 ? [{
+      id: 'hoja', label: t('lines.fSheet'), value: hojaF, onChange: setHojaF, activo: !!hojaF,
+      options: [
+        { value: '', label: t('lines.allSheets') },
+        ...hojas.map((h) => ({
+          value: h,
+          label: h,
+          description: t('lines.linesCountN', { count: alcance.filter((l) => l.hoja_origen === h).length }),
+        })),
+      ],
+    }] : []),
+    {
+      id: 'orden', label: t('common.sortBy'), value: orden, onChange: (v) => setOrden(v as Orden),
+      // Ordenar no filtra: no se resalta ni sale en las pastillas.
+      activo: false,
+      options: [
+        { value: 'numero', label: t('lines.sortNumber') },
+        { value: 'estado', label: t('lines.sortState') },
+        { value: 'proyecto', label: t('lines.sortProject') },
+        { value: 'titular', label: t('lines.sortOwner') },
+        { value: 'actualizado', label: t('lines.sortUpdated') },
+      ],
+    },
+  ];
+
+  const chips: ChipFiltro[] = [
     categoria && { id: 'cat', texto: t(ETIQUETA_CATEGORIA[categoria]), quitar: () => setCategoria('') },
     proyecto && { id: 'proy', texto: proyecto, quitar: () => setProyecto('') },
     cr && { id: 'cr', texto: `CR ${cr}`, quitar: () => setCr('') },
@@ -580,7 +636,7 @@ export function LineasMoviles() {
     soloSinTitular && { id: 'sinTit', texto: t('lines.kpiNoOwner'), quitar: () => setSoloSinTitular(false) },
     soloSinNumero && { id: 'sinNum', texto: t('lines.kpiNoNumber'), quitar: () => setSoloSinNumero(false) },
     q && { id: 'q', texto: `"${q}"`, quitar: () => setQ('') },
-  ].filter(Boolean) as { id: string; texto: string; quitar: () => void }[];
+  ].filter(Boolean) as ChipFiltro[];
 
   const Tip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
@@ -633,7 +689,7 @@ export function LineasMoviles() {
       />
 
       {/* ------------------------------------------------------------ KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-5">
         {tarjetasKpi.map((k, i) => (
           <motion.button
             key={k.id}
@@ -656,110 +712,16 @@ export function LineasMoviles() {
       </div>
 
       {/* --------------------------------------------------------- filtros */}
-      <div className="card p-4 mb-5">
-        <div className="flex flex-col lg:flex-row gap-3">
-          <SearchInput value={q} onChange={setQ} placeholder={t('lines.searchPlaceholder')} />
-
-          <div className="flex flex-wrap gap-2">
-            <Select
-              className="!w-auto min-w-[9rem]" value={categoria}
-              onChange={(v) => setCategoria(v as CategoriaLinea | '')}
-              options={[
-                { value: '', label: t('lines.allStates') },
-                ...CATEGORIAS.map((c) => ({ value: c, label: t(ETIQUETA_CATEGORIA[c]) })),
-              ]}
-            />
-            <Select
-              className="!w-auto min-w-[10rem]" value={proyecto} onChange={setProyecto}
-              placeholder={t('lines.fProyecto')}
-              options={[{ value: '', label: t('lines.allProjects') }, ...opcionesDe(alcance, 'proyecto', t('lines.linesCount'))]}
-            />
-            <Select
-              className="!w-auto min-w-[8rem]" value={cr} onChange={setCr} placeholder="CR"
-              options={[{ value: '', label: t('lines.allCr') }, ...opcionesDe(alcance, 'cr', t('lines.linesCount'))]}
-            />
-            {pais.mostrar && (
-              <Select className="!w-auto min-w-[8.5rem]" value={pais.valor} onChange={pais.setValor} options={pais.opciones} />
-            )}
-            <Select
-              className="!w-auto min-w-[9rem]" value={sedeF} onChange={setSedeF} placeholder={t('users.sede')}
-              options={[
-                { value: '', label: t('lines.allSedes') },
-                ...ordenarSedesPorPais(sedes, pais.paisPropio).map(sedeOption),
-                { value: SIN_SEDE, label: t('lines.noSede') },
-              ]}
-            />
-            {/* La hoja del libro de la que salió cada línea. Solo aparece si
-                de verdad vinieron de varias: con una sola no dice nada. */}
-            {hojas.length > 1 && (
-              <Select
-                className="!w-auto min-w-[10rem]" value={hojaF} onChange={setHojaF}
-                placeholder={t('lines.fSheet')}
-                options={[
-                  { value: '', label: t('lines.allSheets') },
-                  ...hojas.map((h) => ({
-                    value: h,
-                    label: h,
-                    description: t('lines.linesCountN', { count: alcance.filter((l) => l.hoja_origen === h).length }),
-                  })),
-                ]}
-              />
-            )}
-            <Select
-              className="!w-auto min-w-[9.5rem]" value={orden} onChange={(v) => setOrden(v as Orden)}
-              options={[
-                { value: 'numero', label: t('lines.sortNumber') },
-                { value: 'estado', label: t('lines.sortState') },
-                { value: 'proyecto', label: t('lines.sortProject') },
-                { value: 'titular', label: t('lines.sortOwner') },
-                { value: 'actualizado', label: t('lines.sortUpdated') },
-              ]}
-            />
-
-            <div className="flex rounded-xl border border-ink-200 dark:border-white/10 overflow-hidden">
-              {([['tabla', Table2], ['tarjetas', LayoutGrid], ['graficos', ChartPie]] as const).map(([v, Icono]) => (
-                <button
-                  key={v}
-                  onClick={() => cambiarVista(v)}
-                  aria-label={t(`lines.view_${v}`)}
-                  title={t(`lines.view_${v}`)}
-                  aria-pressed={vista === v}
-                  className={`px-3 py-2.5 transition-colors ${
-                    vista === v ? 'bg-brand-500 text-white' : 'text-ink-400 hover:bg-ink-100 dark:hover:bg-white/5'
-                  }`}
-                >
-                  <Icono size={16} />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <AnimatePresence initial={false}>
-          {chips.length > 0 && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden"
-            >
-              <div className="flex flex-wrap items-center gap-1.5 pt-3">
-                {chips.map((c) => (
-                  <motion.button
-                    key={c.id} layout
-                    initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-                    onClick={c.quitar}
-                    className="inline-flex items-center gap-1 rounded-full border border-brand-500/30 bg-brand-500/10 px-2.5 py-1 text-xs font-medium text-brand-600 dark:text-brand-400 hover:bg-brand-500/20 transition-colors"
-                  >
-                    {c.texto} <X size={11} />
-                  </motion.button>
-                ))}
-                <button onClick={limpiar} className="text-xs text-ink-400 hover:text-ink-600 dark:hover:text-ink-200 px-1.5">
-                  {t('common.clearFilters')}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      <BarraFiltros
+        q={q} onQ={setQ} placeholder={t('lines.searchPlaceholder')}
+        campos={campos} chips={chips} onLimpiar={limpiar}
+        vista={vista} onVista={(v) => cambiarVista(v as Vista)}
+        vistas={[
+          { valor: 'tabla', icono: Table2, titulo: t('lines.view_tabla') },
+          { valor: 'tarjetas', icono: LayoutGrid, titulo: t('lines.view_tarjetas') },
+          { valor: 'graficos', icono: ChartPie, titulo: t('lines.view_graficos') },
+        ]}
+      />
 
       {/* ------------------------------------------------------- resultado */}
       {!isLoading && (

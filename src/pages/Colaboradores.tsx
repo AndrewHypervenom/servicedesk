@@ -20,11 +20,12 @@ import { Fragment, useDeferredValue, useEffect, useMemo, useRef, useState } from
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   Building2, CalendarDays, CornerDownRight, Download, LayoutGrid, LogOut, Mail, MapPin, Pencil, Plus, Search,
-  Table2, Upload, UserCheck, UserMinus, UserPlus, Users, X,
+  Table2, Upload, UserCheck, UserMinus, UserPlus, Users,
 } from 'lucide-react';
+import { BarraFiltros, type CampoFiltro, type ChipFiltro } from '@/components/ui/BarraFiltros';
 import { BotonBorrar } from '@/components/ui/BotonBorrar';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { PageHeader } from '@/components/ui/PageHeader';
@@ -143,7 +144,6 @@ export function Colaboradores() {
     () => (localStorage.getItem('colabsVista') as 'tarjetas' | 'tabla') ?? 'tarjetas',
   );
   const [visibles, setVisibles] = useState(PASO_VISIBLES);
-  const buscadorRef = useRef<HTMLInputElement>(null);
 
   // ------------------------------------------------------------- modales
   const [ficha, setFicha] = useState<Colaborador | null>(null);
@@ -160,16 +160,6 @@ export function Colaboradores() {
   );
 
   const cambiarVista = (v: 'tarjetas' | 'tabla') => { setVista(v); localStorage.setItem('colabsVista', v); };
-
-  // Atajo "/" para saltar al buscador, como en las herramientas que se usan a diario.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      const dentroDeCampo = /^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement)?.tagName ?? '');
-      if (e.key === '/' && !dentroDeCampo) { e.preventDefault(); buscadorRef.current?.focus(); }
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, []);
 
   // El índice de búsqueda se calcula una vez por carga, no en cada tecla.
   const indice = useMemo(() => construirIndice(colabs), [colabs]);
@@ -419,7 +409,62 @@ export function Colaboradores() {
     ['fecha_ingreso', t('colabField.fechaIngreso')], ['fecha_retiro', t('colabField.fechaRetiro')], ['fecha_nacimiento', t('colabField.fechaNacimiento')],
   ];
 
-  const chips: { id: string; texto: string; quitar: () => void }[] = [
+  /**
+   * Los filtros de la barra, descritos en datos.
+   *
+   * Pintarlos con un `map` es lo que permite que la rejilla se reparta el ancho
+   * entre los que haya: el de país aparece y desaparece según quién mire, y con
+   * siete <Select> escritos a mano cada uno tenía que traer su propio ancho.
+   */
+  const campos: CampoFiltro[] = [
+    {
+      id: 'estado', label: t('common.status'), value: estado, activo: estado !== 'todos',
+      onChange: (v) => setEstado(v as Estado),
+      options: [
+        { value: 'todos', label: t('common.all') },
+        { value: 'activos', label: t('collaborators.onlyActive') },
+        { value: 'inactivos', label: t('collaborators.onlyInactive') },
+      ],
+    },
+    ...(pais.mostrar ? [{
+      id: 'pais', label: t('common.country'), value: pais.valor, onChange: pais.setValor,
+      options: pais.opciones, activo: pais.activo,
+    }] : []),
+    {
+      id: 'sede', label: t('users.sede'), value: sedeF, onChange: setSedeF, activo: !!sedeF,
+      options: [
+        { value: '', label: t('collaborators.allSedes') },
+        ...sedesOrdenadas.map(sedeOption),
+        { value: SIN_SEDE, label: t('collaborators.noSede') },
+      ],
+    },
+    {
+      id: 'ciudad', label: t('colabField.ciudad'), value: ciudad, onChange: setCiudad, activo: !!ciudad,
+      options: [{ value: '', label: t('collaborators.allCities') }, ...opcionesDe(colabs, 'ciudad')],
+    },
+    {
+      id: 'area', label: t('colabField.area'), value: area, onChange: setArea, activo: !!area,
+      options: [{ value: '', label: t('collaborators.allAreas') }, ...opcionesDe(colabs, 'area')],
+    },
+    {
+      id: 'contrato', label: t('colabField.contrato'), value: contrato, onChange: setContrato, activo: !!contrato,
+      options: [{ value: '', label: t('collaborators.allContracts') }, ...opcionesDe(colabs, 'termino_contrato')],
+    },
+    {
+      id: 'orden', label: t('common.sortBy'), value: orden, onChange: (v) => setOrden(v as Orden),
+      // El orden no filtra nada: no se resalta ni sale en las pastillas.
+      activo: false,
+      options: [
+        { value: 'nombre', label: t('collaborators.sortName') },
+        { value: 'nombre_desc', label: t('collaborators.sortNameDesc') },
+        { value: 'ingreso', label: t('collaborators.sortRecent') },
+        { value: 'antiguedad', label: t('collaborators.sortSeniority') },
+        { value: 'actualizado', label: t('collaborators.sortUpdated') },
+      ],
+    },
+  ];
+
+  const chips: ChipFiltro[] = [
     estado !== 'todos' && { id: 'estado', texto: estado === 'activos' ? t('collaborators.onlyActive') : t('collaborators.onlyInactive'), quitar: () => setEstado('todos') },
     sedeF && { id: 'sede', texto: sedeF === SIN_SEDE ? t('collaborators.noSede') : (sedes.find((s) => s.id === sedeF)?.nombre ?? ''), quitar: () => setSedeF('') },
     ciudad && { id: 'ciudad', texto: ciudad, quitar: () => setCiudad('') },
@@ -427,7 +472,7 @@ export function Colaboradores() {
     contrato && { id: 'contrato', texto: estatusLegible(contrato), quitar: () => setContrato('') },
     soloSalidas && { id: 'salidas', texto: t('exits.filterChip'), quitar: () => setSoloSalidas(false) },
     q && { id: 'q', texto: `"${q}"`, quitar: () => setQ('') },
-  ].filter(Boolean) as { id: string; texto: string; quitar: () => void }[];
+  ].filter(Boolean) as ChipFiltro[];
 
   const tarjetasKpi = [
     { id: 'total', label: t('collaborators.kpiTotal'), n: kpis.total, icon: Users, tono: 'from-brand-400 to-brand-600', al: () => { limpiar(); } },
@@ -480,125 +525,15 @@ export function Colaboradores() {
       </div>
 
       {/* --------------------------------------------------------- filtros */}
-      <div className="card p-4 mb-5">
-        <div className="flex flex-col lg:flex-row gap-3">
-          <div className="relative flex-1 min-w-0">
-            <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400 pointer-events-none" />
-            <input
-              ref={buscadorRef}
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder={t('collaborators.searchPlaceholder')}
-              className="input pl-10 pr-16"
-            />
-            <AnimatePresence>
-              {q && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.8, y: '-50%' }} animate={{ opacity: 1, scale: 1, y: '-50%' }} exit={{ opacity: 0, scale: 0.8, y: '-50%' }}
-                  onClick={() => { setQ(''); buscadorRef.current?.focus(); }}
-                  className="absolute right-3 top-1/2 p-1 rounded-full text-ink-400 hover:bg-ink-100 dark:hover:bg-white/10"
-                  aria-label={t('common.clear')}
-                >
-                  <X size={14} />
-                </motion.button>
-              )}
-            </AnimatePresence>
-            {!q && (
-              <kbd className="absolute right-3 top-1/2 -translate-y-1/2 hidden sm:block text-[10px] font-mono text-ink-400 border border-ink-200 dark:border-white/10 rounded px-1.5 py-0.5">
-                /
-              </kbd>
-            )}
-          </div>
-
-          <div className="flex flex-wrap gap-2">
-            <Select
-              className="!w-auto min-w-[8.5rem]" value={estado} onChange={(v) => setEstado(v as Estado)}
-              options={[
-                { value: 'todos', label: t('common.all') },
-                { value: 'activos', label: t('collaborators.onlyActive') },
-                { value: 'inactivos', label: t('collaborators.onlyInactive') },
-              ]}
-            />
-            {pais.mostrar && (
-              <Select className="!w-auto min-w-[8.5rem]" value={pais.valor} onChange={pais.setValor} options={pais.opciones} />
-            )}
-            <Select
-              className="!w-auto min-w-[9rem]" value={sedeF} onChange={setSedeF} placeholder={t('users.sede')}
-              options={[
-                { value: '', label: t('collaborators.allSedes') },
-                ...sedesOrdenadas.map(sedeOption),
-                { value: SIN_SEDE, label: t('collaborators.noSede') },
-              ]}
-            />
-            <Select
-              className="!w-auto min-w-[8.5rem]" value={ciudad} onChange={setCiudad} placeholder={t('colabField.ciudad')}
-              options={[{ value: '', label: t('collaborators.allCities') }, ...opcionesDe(colabs, 'ciudad')]}
-            />
-            <Select
-              className="!w-auto min-w-[8.5rem]" value={area} onChange={setArea} placeholder={t('colabField.area')}
-              options={[{ value: '', label: t('collaborators.allAreas') }, ...opcionesDe(colabs, 'area')]}
-            />
-            <Select
-              className="!w-auto min-w-[9rem]" value={contrato} onChange={setContrato} placeholder={t('colabField.contrato')}
-              options={[{ value: '', label: t('collaborators.allContracts') }, ...opcionesDe(colabs, 'termino_contrato')]}
-            />
-            <Select
-              className="!w-auto min-w-[9.5rem]" value={orden} onChange={(v) => setOrden(v as Orden)}
-              options={[
-                { value: 'nombre', label: t('collaborators.sortName') },
-                { value: 'nombre_desc', label: t('collaborators.sortNameDesc') },
-                { value: 'ingreso', label: t('collaborators.sortRecent') },
-                { value: 'antiguedad', label: t('collaborators.sortSeniority') },
-                { value: 'actualizado', label: t('collaborators.sortUpdated') },
-              ]}
-            />
-
-            <div className="flex rounded-xl border border-ink-200 dark:border-white/10 overflow-hidden">
-              {([['tarjetas', LayoutGrid], ['tabla', Table2]] as const).map(([v, Icono]) => (
-                <button
-                  key={v}
-                  onClick={() => cambiarVista(v)}
-                  aria-label={v}
-                  aria-pressed={vista === v}
-                  className={`px-3 py-2.5 transition-colors ${
-                    vista === v
-                      ? 'bg-brand-500 text-white'
-                      : 'text-ink-400 hover:bg-ink-100 dark:hover:bg-white/5'
-                  }`}
-                >
-                  <Icono size={16} />
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {/* Filtros activos: visibles y quitables uno a uno. */}
-        <AnimatePresence initial={false}>
-          {chips.length > 0 && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden"
-            >
-              <div className="flex flex-wrap items-center gap-1.5 pt-3">
-                {chips.map((c) => (
-                  <motion.button
-                    key={c.id} layout
-                    initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.9 }}
-                    onClick={c.quitar}
-                    className="inline-flex items-center gap-1 rounded-full border border-brand-500/30 bg-brand-500/10 px-2.5 py-1 text-xs font-medium text-brand-600 dark:text-brand-400 hover:bg-brand-500/20 transition-colors"
-                  >
-                    {c.texto} <X size={11} />
-                  </motion.button>
-                ))}
-                <button onClick={limpiar} className="text-xs text-ink-400 hover:text-ink-600 dark:hover:text-ink-200 px-1.5">
-                  {t('common.clearFilters')}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      <BarraFiltros
+        q={q} onQ={setQ} placeholder={t('collaborators.searchPlaceholder')}
+        campos={campos} chips={chips} onLimpiar={limpiar}
+        vista={vista} onVista={(v) => cambiarVista(v as 'tarjetas' | 'tabla')}
+        vistas={[
+          { valor: 'tarjetas', icono: LayoutGrid, titulo: t('common.viewCards') },
+          { valor: 'tabla', icono: Table2, titulo: t('common.viewTable') },
+        ]}
+      />
 
       {/* -------------------------------------------------------- resultado */}
       {!isLoading && (

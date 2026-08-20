@@ -25,7 +25,7 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { AnimatePresence, motion } from 'framer-motion';
+import { motion } from 'framer-motion';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip, ResponsiveContainer,
   Cell, LabelList,
@@ -33,17 +33,17 @@ import {
 import {
   AlertTriangle, CalendarDays, ChartPie, CheckCircle2, Clock, Download, FileDown, Gauge,
   LayoutGrid, ListChecks, Pencil, Plus, StickyNote, Table2, Ticket as TicketIcon,
-  Trash2, Upload, User, X,
+  Trash2, Upload, User,
 } from 'lucide-react';
 import { DataTable, type Column } from '@/components/ui/DataTable';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { Modal } from '@/components/ui/Modal';
+import { BarraFiltros, type CampoFiltro, type ChipFiltro } from '@/components/ui/BarraFiltros';
 import { Select, type SelectOption } from '@/components/ui/Select';
 import { Button } from '@/components/ui/Button';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { NumeroAnimado } from '@/components/ui/NumeroAnimado';
 import { Resaltado } from '@/components/ui/Resaltado';
-import { SearchInput } from '@/components/ui/SearchInput';
 import { SkeletonGrid } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { GraficoCard, type GraficoHandle } from '@/components/analitica/GraficoCard';
@@ -692,7 +692,75 @@ export function Tickets() {
     BLOQUEADA: t('tickets.stBlocked'),
   };
 
-  const chips: { id: string; texto: string; quitar: () => void }[] = [
+  const campos: CampoFiltro[] = [
+    // El mes primero: es el filtro que se usa cada vez que se abre.
+    {
+      id: 'periodo', label: t('tickets.month'), value: periodo, onChange: setPeriodo, activo: !!periodo,
+      options: [
+        { value: '', label: t('tickets.allMonths') },
+        ...periodos.map(([p, n]) => ({
+          value: p,
+          label: etiquetaPeriodo(p),
+          description: t('tickets.ticketsCount', { count: n }),
+        })),
+      ],
+    },
+    // Un solo selector para el estado y para los dos grupos que lo cruzan.
+    // Antes "abiertos" y "atrasados" solo existían como tarjetas, así que se
+    // podían poner pero no quitar desde aquí.
+    {
+      id: 'foco', label: t('common.status'), value: foco, onChange: (v) => setFoco(v as Foco), activo: !!foco,
+      options: [
+        { value: '', label: t('tickets.allStates') },
+        { value: 'ABIERTOS', label: t('tickets.kpiOpen'), description: t('tickets.focusOpenHint') },
+        { value: 'ATRASADOS', label: t('tickets.kpiLate', { dias: DIAS_ATRASO }), description: t('tickets.focusLateHint', { dias: DIAS_ATRASO }) },
+        ...ESTADOS.map((e) => ({ value: e, label: t(ETIQUETA_ESTADO[e]) })),
+      ],
+    },
+    {
+      id: 'prioridad', label: t('tickets.fPriority'), value: prioridad, activo: !!prioridad,
+      onChange: (v) => setPrioridad(v as PrioridadTicket | ''),
+      options: [
+        { value: '', label: t('tickets.allPriorities') },
+        ...PRIORIDADES.map((p) => ({ value: p, label: t(ETIQUETA_PRIORIDAD[p]) })),
+      ],
+    },
+    {
+      id: 'analista', label: t('tickets.fAnalyst'), value: analista, onChange: setAnalista, activo: !!analista,
+      options: [
+        { value: '', label: t('tickets.allAnalysts') },
+        ...analistas.map(([k, v]) => ({
+          value: k, label: v.label, description: t('tickets.ticketsCount', { count: v.n }),
+        })),
+      ],
+    },
+    ...(pais.mostrar ? [{
+      id: 'pais', label: t('common.country'), value: pais.valor, onChange: pais.setValor,
+      options: pais.opciones, activo: pais.activo,
+    }] : []),
+    {
+      id: 'sede', label: t('users.sede'), value: sedeF, onChange: setSedeF, activo: !!sedeF,
+      options: [
+        { value: '', label: t('tickets.allSedes') },
+        ...ordenarSedesPorPais(sedes, pais.paisPropio).map(sedeOption),
+        { value: SIN_SEDE, label: t('tickets.noSede') },
+      ],
+    },
+    {
+      id: 'orden', label: t('common.sortBy'), value: orden, onChange: (v) => setOrden(v as Orden),
+      // Ordenar no filtra: no se resalta ni sale en las pastillas.
+      activo: false,
+      options: [
+        { value: 'reciente', label: t('tickets.sortRecent') },
+        { value: 'antiguo', label: t('tickets.sortOldest') },
+        { value: 'dias', label: t('tickets.sortDays') },
+        { value: 'ticket', label: t('tickets.sortTicket') },
+        { value: 'estado', label: t('tickets.sortState') },
+      ],
+    },
+  ];
+
+  const chips: ChipFiltro[] = [
     periodo && { id: 'per', texto: etiquetaPeriodo(periodo), quitar: () => setPeriodo('') },
     prioridad && { id: 'pri', texto: t(ETIQUETA_PRIORIDAD[prioridad]), quitar: () => setPrioridad('') },
     analista && {
@@ -708,7 +776,7 @@ export function Tickets() {
     },
     foco && { id: 'foco', texto: ETIQUETA_FOCO[foco], quitar: () => setFoco('') },
     q && { id: 'q', texto: `"${q}"`, quitar: () => setQ('') },
-  ].filter(Boolean) as { id: string; texto: string; quitar: () => void }[];
+  ].filter(Boolean) as ChipFiltro[];
 
   const Tip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
@@ -811,127 +879,17 @@ export function Tickets() {
       </div>
 
       {/* --------------------------------------------------------- filtros */}
-      <div className="card p-4 mb-5">
-        {/* Dos filas y no una: son seis filtros, y metidos en la misma línea que
-            el buscador lo aplastaban hasta dejarlo en un cuadrado con la lupa.
-            Arriba lo que siempre se usa —escribir y elegir cómo mirar—, abajo
-            los filtros, que se envuelven solos sin robarle ancho a nadie. */}
-        <div className="flex items-center gap-3">
-          <SearchInput value={q} onChange={setQ} placeholder={t('tickets.searchPlaceholder')} />
-
-          <div className="shrink-0 flex rounded-xl border border-ink-200 dark:border-white/10 overflow-hidden">
-            {([['panel', Gauge], ['tabla', Table2], ['tarjetas', LayoutGrid], ['graficos', ChartPie]] as const).map(([v, Icono]) => (
-              <button
-                key={v}
-                onClick={() => cambiarVista(v)}
-                aria-label={t(`tickets.view_${v}`)}
-                title={t(`tickets.view_${v}`)}
-                aria-pressed={vista === v}
-                className={`px-3 py-2.5 transition-colors ${
-                  vista === v ? 'bg-brand-500 text-white' : 'text-ink-400 hover:bg-ink-100 dark:hover:bg-white/5'
-                }`}
-              >
-                <Icono size={16} />
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          {/* El mes primero: es el filtro que se usa cada vez que se abre. */}
-          <Select
-            className="!w-auto min-w-[10rem]" value={periodo} onChange={setPeriodo}
-            placeholder={t('tickets.month')}
-            options={[
-              { value: '', label: t('tickets.allMonths') },
-              ...periodos.map(([p, n]) => ({
-                value: p,
-                label: etiquetaPeriodo(p),
-                description: t('tickets.ticketsCount', { count: n }),
-              })),
-            ]}
-          />
-          {/* Un solo selector para el estado y para los dos grupos que lo
-              cruzan. Antes "abiertos" y "atrasados" solo existían como
-              tarjetas, así que se podían poner pero no quitar desde aquí. */}
-          <Select
-            className="!w-auto min-w-[10rem]" value={foco}
-            onChange={(v) => setFoco(v as Foco)}
-            options={[
-              { value: '', label: t('tickets.allStates') },
-              { value: 'ABIERTOS', label: t('tickets.kpiOpen'), description: t('tickets.focusOpenHint') },
-              { value: 'ATRASADOS', label: t('tickets.kpiLate', { dias: DIAS_ATRASO }), description: t('tickets.focusLateHint', { dias: DIAS_ATRASO }) },
-              ...ESTADOS.map((e) => ({ value: e, label: t(ETIQUETA_ESTADO[e]) })),
-            ]}
-          />
-          <Select
-            className="!w-auto min-w-[8.5rem]" value={prioridad}
-            onChange={(v) => setPrioridad(v as PrioridadTicket | '')}
-            options={[
-              { value: '', label: t('tickets.allPriorities') },
-              ...PRIORIDADES.map((p) => ({ value: p, label: t(ETIQUETA_PRIORIDAD[p]) })),
-            ]}
-          />
-          <Select
-            className="!w-auto min-w-[10rem]" value={analista} onChange={setAnalista}
-            placeholder={t('tickets.fAnalyst')}
-            options={[
-              { value: '', label: t('tickets.allAnalysts') },
-              ...analistas.map(([k, v]) => ({
-                value: k, label: v.label, description: t('tickets.ticketsCount', { count: v.n }),
-              })),
-            ]}
-          />
-          {pais.mostrar && (
-            <Select className="!w-auto min-w-[8.5rem]" value={pais.valor} onChange={pais.setValor} options={pais.opciones} />
-          )}
-          <Select
-            className="!w-auto min-w-[9rem]" value={sedeF} onChange={setSedeF}
-            placeholder={t('users.sede')}
-            options={[
-              { value: '', label: t('tickets.allSedes') },
-              ...ordenarSedesPorPais(sedes, pais.paisPropio).map(sedeOption),
-              { value: SIN_SEDE, label: t('tickets.noSede') },
-            ]}
-          />
-          {/* Ordenar no es filtrar: va al extremo de la fila para que no se
-              lea como un filtro más. */}
-          <Select
-            className="!w-auto min-w-[10rem] lg:ml-auto" value={orden} onChange={(v) => setOrden(v as Orden)}
-            options={[
-              { value: 'reciente', label: t('tickets.sortRecent') },
-              { value: 'antiguo', label: t('tickets.sortOldest') },
-              { value: 'dias', label: t('tickets.sortDays') },
-              { value: 'ticket', label: t('tickets.sortTicket') },
-              { value: 'estado', label: t('tickets.sortState') },
-            ]}
-          />
-        </div>
-
-        <AnimatePresence initial={false}>
-          {chips.length > 0 && (
-            <motion.div
-              initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }}
-              className="overflow-hidden"
-            >
-              <div className="flex flex-wrap items-center gap-1.5 pt-3">
-                {chips.map((c) => (
-                  <button
-                    key={c.id}
-                    onClick={c.quitar}
-                    className="inline-flex items-center gap-1 rounded-full border border-brand-500/30 bg-brand-500/10 px-2.5 py-1 text-xs font-medium text-brand-600 dark:text-brand-400 hover:bg-brand-500/20 transition-colors"
-                  >
-                    {c.texto} <X size={11} />
-                  </button>
-                ))}
-                <button onClick={limpiar} className="text-xs text-ink-400 hover:text-ink-600 dark:hover:text-ink-200 px-1.5">
-                  {t('common.clearFilters')}
-                </button>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+      <BarraFiltros
+        q={q} onQ={setQ} placeholder={t('tickets.searchPlaceholder')}
+        campos={campos} chips={chips} onLimpiar={limpiar}
+        vista={vista} onVista={(v) => cambiarVista(v as Vista)}
+        vistas={[
+          { valor: 'panel', icono: Gauge, titulo: t('tickets.view_panel') },
+          { valor: 'tabla', icono: Table2, titulo: t('tickets.view_tabla') },
+          { valor: 'tarjetas', icono: LayoutGrid, titulo: t('tickets.view_tarjetas') },
+          { valor: 'graficos', icono: ChartPie, titulo: t('tickets.view_graficos') },
+        ]}
+      />
 
       {/* ------------------------------------------------------- resultado */}
       {/* Sin filas no hay nada que contar ni que exportar: sin esta condición,

@@ -2,7 +2,8 @@ import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Boxes, Search, Plus, Download, QrCode, AlertTriangle, Pencil, Upload, SearchX, X } from 'lucide-react';
+import { Boxes, Plus, Download, QrCode, AlertTriangle, Pencil, Upload, SearchX, X } from 'lucide-react';
+import { BarraFiltros, type CampoFiltro, type ChipFiltro } from '@/components/ui/BarraFiltros';
 import { BotonBorrar } from '@/components/ui/BotonBorrar';
 import { listEquipos } from '@/lib/api';
 import { exportEquiposExcel } from '@/lib/excel';
@@ -10,7 +11,6 @@ import { descargarQr } from '@/lib/qr';
 import { fmtSerial } from '@/lib/format';
 import { contratoPorVencer, contratoVencido, diasDeContrato } from '@/lib/estados';
 import { PageHeader } from '@/components/ui/PageHeader';
-import { Select } from '@/components/ui/Select';
 import { EstadoBadge, Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { DataTable, type Column } from '@/components/ui/DataTable';
@@ -85,6 +85,55 @@ export function Inventario() {
       setBulkBusy(false);
     }
   };
+
+  const TIPOS = ['PORTATIL', 'ESCRITORIO', 'CELULAR', 'MONITOR', 'PERIFERICO', 'BASE_RECALENTAMIENTO', 'CARGADOR', 'OTRO'];
+  const ESTADOS_ASIG = ['DISPONIBLE', 'ASIGNADO', 'EN_MANTENIMIENTO', 'EN_DEVOLUCION', 'DE_BAJA'];
+
+  const campos: CampoFiltro[] = [
+    ...(pais.mostrar ? [{
+      id: 'pais', label: t('common.country'), value: pais.valor, onChange: pais.setValor,
+      options: pais.opciones, activo: pais.activo,
+    }] : []),
+    {
+      id: 'estado', label: t('common.status'), value: fEstado, onChange: setFEstado, activo: !!fEstado,
+      options: [
+        { value: '', label: t('common.all') },
+        ...ESTADOS_ASIG.map((s) => ({ value: s, label: t(`estadoAsig.${s}`), description: t(`estadoAsigDesc.${s}`) })),
+      ],
+    },
+    {
+      id: 'tipo', label: t('common.type'), value: fTipo, onChange: setFTipo, activo: !!fTipo,
+      options: [
+        { value: '', label: t('common.all') },
+        ...TIPOS.map((s) => ({ value: s, label: t(`tipo.${s}`), description: t(`tipoDesc.${s}`) })),
+      ],
+    },
+    {
+      id: 'prop', label: t('inventory.columns.owner'), value: fProp, onChange: setFProp, activo: !!fProp,
+      options: [{ value: '', label: t('common.all') }, ...proveedores.map((p) => ({ value: p, label: p }))],
+    },
+    {
+      id: 'contrato', label: t('inventory.contrato'), value: fContrato, onChange: setFContrato, activo: !!fContrato,
+      options: [
+        { value: '', label: t('common.all') },
+        { value: 'VENCIDO', label: t('inventory.contratoVencido'), description: t('inventory.contratoVencidoDesc') },
+        { value: 'POR_VENCER', label: t('inventory.contratoPorVencer'), description: t('inventory.contratoPorVencerDesc') },
+      ],
+    },
+  ];
+
+  const chips: ChipFiltro[] = [
+    pais.activo && { id: 'pais', texto: pais.etiqueta ?? '', quitar: () => pais.setValor('') },
+    fEstado && { id: 'estado', texto: t(`estadoAsig.${fEstado}`), quitar: () => setFEstado('') },
+    fTipo && { id: 'tipo', texto: t(`tipo.${fTipo}`), quitar: () => setFTipo('') },
+    fProp && { id: 'prop', texto: fProp, quitar: () => setFProp('') },
+    fContrato && {
+      id: 'contrato',
+      texto: t(fContrato === 'VENCIDO' ? 'inventory.contratoVencido' : 'inventory.contratoPorVencer'),
+      quitar: () => setFContrato(''),
+    },
+    q.trim() && { id: 'q', texto: `"${q.trim()}"`, quitar: () => setQ('') },
+  ].filter(Boolean) as ChipFiltro[];
 
   const columns: Column<Equipo>[] = [
     {
@@ -195,59 +244,10 @@ export function Inventario() {
         }
       />
 
-      <div className="card p-4 mb-5">
-        <div className="flex flex-col lg:flex-row gap-3">
-          <div className="relative flex-1">
-            <Search size={18} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-ink-400" />
-            <input className="input pl-11" placeholder={t('common.searchSerial')} value={q} onChange={(e) => setQ(e.target.value)} />
-          </div>
-          <div className="flex gap-2 flex-wrap">
-            {pais.mostrar && (
-              <Select value={pais.valor} onChange={pais.setValor} className="!w-auto" options={pais.opciones} />
-            )}
-            <Select
-              value={fEstado}
-              onChange={setFEstado}
-              className="!w-auto"
-              options={[
-                { value: '', label: `${t('common.status')}: ${t('common.all')}` },
-                ...['DISPONIBLE', 'ASIGNADO', 'EN_MANTENIMIENTO', 'EN_DEVOLUCION', 'DE_BAJA'].map((s) => ({ value: s, label: t(`estadoAsig.${s}`), description: t(`estadoAsigDesc.${s}`) })),
-              ]}
-            />
-            <Select
-              value={fTipo}
-              onChange={setFTipo}
-              className="!w-auto"
-              options={[
-                { value: '', label: `${t('common.type')}: ${t('common.all')}` },
-                ...['PORTATIL', 'ESCRITORIO', 'CELULAR', 'MONITOR', 'PERIFERICO', 'BASE_RECALENTAMIENTO', 'CARGADOR', 'OTRO'].map((s) => ({ value: s, label: t(`tipo.${s}`), description: t(`tipoDesc.${s}`) })),
-              ]}
-            />
-            <Select
-              value={fProp}
-              onChange={setFProp}
-              className="!w-auto"
-              options={[
-                { value: '', label: `Proveedor: ${t('common.all')}` },
-                ...proveedores.map((p) => ({ value: p, label: p })),
-              ]}
-            />
-            <Select
-              value={fContrato}
-              onChange={setFContrato}
-              className="!w-auto"
-              options={[
-                { value: '', label: `${t('inventory.contrato')}: ${t('common.all')}` },
-                { value: 'VENCIDO', label: t('inventory.contratoVencido'), description: t('inventory.contratoVencidoDesc') },
-                { value: 'POR_VENCER', label: t('inventory.contratoPorVencer'), description: t('inventory.contratoPorVencerDesc') },
-              ]}
-            />
-            {hayFiltros && (
-              <Button variant="ghost" icon={X} onClick={limpiarFiltros}>{t('common.clearFilters')}</Button>
-            )}
-          </div>
-        </div>
-
+      <BarraFiltros
+        q={q} onQ={setQ} placeholder={t('common.searchSerial')}
+        campos={campos} chips={chips} onLimpiar={limpiarFiltros}
+      >
         {/* Los contratos vencidos hay que revisarlos: se avisa aunque el
             usuario no venga buscándolos, con el filtro a un clic. */}
         {vencidos > 0 && fContrato !== 'VENCIDO' && (
@@ -262,7 +262,7 @@ export function Inventario() {
             <span className="text-xs font-medium underline">{t('inventory.vencidosVer')}</span>
           </button>
         )}
-      </div>
+      </BarraFiltros>
 
       <div className="hidden md:block">
         <DataTable
