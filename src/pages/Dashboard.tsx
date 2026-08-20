@@ -14,6 +14,7 @@ import { listEquipos, recentMovimientos } from '@/lib/api';
 import { fmtDate, fmtSerial } from '@/lib/format';
 import { diasDeContrato } from '@/lib/estados';
 import { PageHeader } from '@/components/ui/PageHeader';
+import { AvisoSalidas } from '@/components/salidas/AvisoSalidas';
 import { Select } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { SkeletonStats, SkeletonChart, SkeletonText } from '@/components/ui/Skeleton';
@@ -159,6 +160,10 @@ export function Dashboard() {
         ))}
       </div>
       )}
+
+      {/* Va antes de los gráficos a propósito: es lo único del panel que pide
+          una acción hoy. Si no hay salidas pendientes no pinta nada. */}
+      <AvisoSalidas />
 
       <div className="grid lg:grid-cols-3 gap-6">
         <div className="card p-5 lg:col-span-1">

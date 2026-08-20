@@ -4,6 +4,7 @@ import type {
   Equipo, Colaborador, Proveedor, Movimiento, Acta, Perfil, Integracion, LineaMovil,
   TipoMovimiento, EstadoAsignacion, RolUsuario, Pais, Sede, Marca,
   EntidadBorrable, SolicitudBorrado, RegistroAuditoria, TecnicoActa, Ticket, AnalistaMesa,
+  RevisionSalida, RespuestaEntrega,
 } from '@/types';
 
 // El filtro `eliminado_en is null` se repite en cliente aunque RLS ya lo aplica.
@@ -1023,5 +1024,64 @@ export async function updateSede(id: string, patch: { nombre?: string; pais_id?:
 }
 export async function deleteSede(id: string): Promise<void> {
   const { error } = await supabase.from('sedes').delete().eq('id', id);
+  if (error) throw error;
+}
+
+// ═══ Salidas · ¿entregó el equipo? ═══════════════════════════════════════
+// La respuesta vive en `salidas_revisiones` (una fila por persona, ver la
+// migración supabase/migrations/20260820_salidas_revisiones.sql). La alerta en
+// sí no se guarda: se recalcula con `detectarSalidas` a partir de la base de
+// Talento Humano y del inventario, así que nunca queda desfasada.
+
+/** Códigos con los que PostgREST avisa de que la tabla todavía no existe. */
+const TABLA_AUSENTE = ['42P01', 'PGRST205', 'PGRST002'];
+
+function tablaAusente(e: unknown): boolean {
+  const err = e as { code?: string; message?: string };
+  return TABLA_AUSENTE.includes(err?.code ?? '') ||
+    /salidas_revisiones.*(does not exist|no existe)/i.test(err?.message ?? '');
+}
+
+export interface RevisionesSalida {
+  filas: RevisionSalida[];
+  /**
+   * `false` cuando la migración todavía no se ha corrido: las alertas se
+   * calculan igual (salen del inventario), pero no hay dónde anotar la
+   * respuesta. La pantalla lo dice en vez de fallar con un error crudo.
+   */
+  disponible: boolean;
+}
+
+export async function listRevisionesSalida(): Promise<RevisionesSalida> {
+  const { data, error } = await supabase.from('salidas_revisiones').select('*');
+  if (error) {
+    if (tablaAusente(error)) return { filas: [], disponible: false };
+    throw error;
+  }
+  return { filas: (data as RevisionSalida[]) ?? [], disponible: true };
+}
+
+/**
+ * Anota (o cambia) la respuesta sobre una salida.
+ *
+ * Es un upsert por cédula: la pregunta se puede volver a responder — alguien
+ * marca "no entregó" y a la semana aparece el portátil— y lo que interesa es la
+ * última respuesta, con quién la dio y cuándo.
+ */
+export async function guardarRevisionSalida(p: {
+  cedula: string; respuesta: RespuestaEntrega; revisadoPor?: string | null;
+}): Promise<void> {
+  const { error } = await supabase.from('salidas_revisiones').upsert({
+    cedula: p.cedula,
+    respuesta: p.respuesta,
+    revisado_por: p.revisadoPor ?? null,
+    revisado_en: new Date().toISOString(),
+  }, { onConflict: 'cedula' });
+  if (error) throw error;
+}
+
+/** Deshace la respuesta: la salida vuelve a la lista de pendientes. */
+export async function borrarRevisionSalida(cedula: string): Promise<void> {
+  const { error } = await supabase.from('salidas_revisiones').delete().eq('cedula', cedula);
   if (error) throw error;
 }

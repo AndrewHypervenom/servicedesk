@@ -340,3 +340,19 @@ export interface Integracion {
   activo: boolean;
   creado_en: string;
 }
+
+/**
+ * Respuesta a "¿entregó el equipo este colaborador?".
+ *
+ * Es una fila por persona, no por equipo: la pregunta se hace sobre la salida,
+ * y lo que se responde es si esa salida quedó saldada. El detalle de qué equipo
+ * volvió y cuándo ya lo cuenta la trazabilidad de cada equipo.
+ */
+export type RespuestaEntrega = 'ENTREGO' | 'NO_ENTREGO' | 'SIN_EQUIPOS';
+
+export interface RevisionSalida {
+  cedula: string;
+  respuesta: RespuestaEntrega;
+  revisado_por?: string | null;
+  revisado_en: string;
+}

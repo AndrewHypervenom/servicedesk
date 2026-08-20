@@ -7,6 +7,9 @@ export const RUTA_ROLES: Record<string, RolUsuario[]> = {
   '/devolucion': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
   '/escanear': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
   '/colaboradores': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
+  // Salidas: los cuatro roles. Perseguir el equipo de quien se va es trabajo
+  // de la mesa, no de administración; la pantalla se filtra sola por país.
+  '/salidas': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
   '/proveedores': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
   '/reporte-proveedor': ['ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO'],
   // Líneas móviles: la ven los cuatro roles. ADMIN y Jefe (LIDER) sobre todo el

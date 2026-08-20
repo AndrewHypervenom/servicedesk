@@ -4,10 +4,12 @@ import { motion } from 'framer-motion';
 import {
   LayoutDashboard, Boxes, UserPlus, Undo2, ScanLine, Users, FileSignature,
   Truck, PackageOpen, Plug, ShieldCheck, Settings, MapPin, X, ChartPie, ShieldQuestion, History,
-  ChevronLeft, Smartphone, TicketCheck,
+  ChevronLeft, Smartphone, TicketCheck, LogOut,
 } from 'lucide-react';
+import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { contarSolicitudesPendientes } from '@/lib/api';
+import { contarSolicitudesPendientes, listColaboradores, listEquipos, listLineas, listRevisionesSalida } from '@/lib/api';
+import { detectarSalidas, sinResolver } from '@/lib/salidas';
 import { useApp } from '@/store/useApp';
 import { RUTA_ROLES } from '@/lib/roles';
 import { Tooltip } from '@/components/ui/Tooltip';
@@ -46,6 +48,30 @@ export function Sidebar({ open, onClose, colapsado, onToggle }: Props) {
   const { t } = useTranslation();
   const { perfil } = useApp();
 
+  // Cuántas salidas están sin resolver, para el distintivo del menú.
+  //
+  // Las cuatro consultas van con `enabled: false` a propósito: NO piden nada a
+  // la red, solo leen lo que otras pantallas ya dejaron en la caché (y se
+  // vuelven a pintar cuando esa caché cambia). Cargar la planta entera —dos mil
+  // filas— desde el menú, en todas las pantallas y para todos los roles, sería
+  // pagar el aviso mucho más caro de lo que vale.
+  //
+  // El número va sin filtrar por país, a diferencia de la pantalla: el menú
+  // avisa de que hay trabajo, y esconderlo porque está en otro país sería
+  // justo lo contrario de para lo que sirve un distintivo.
+  const enCache = { enabled: false, staleTime: Infinity } as const;
+  const { data: colabs } = useQuery({ queryKey: ['colabs'], queryFn: listColaboradores, ...enCache });
+  const { data: equipos } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos, ...enCache });
+  const { data: lineas } = useQuery({ queryKey: ['lineas'], queryFn: listLineas, ...enCache });
+  const { data: revisiones } = useQuery({ queryKey: ['revisionesSalida'], queryFn: listRevisionesSalida, ...enCache });
+
+  const salidasPendientes = useMemo(() => {
+    if (!colabs || !equipos) return 0;
+    return detectarSalidas({
+      colaboradores: colabs, equipos, lineas: lineas ?? [], revisiones: revisiones?.filas ?? [],
+    }).filter((s) => s.fase === 'RETIRADO' && sinResolver(s)).length;
+  }, [colabs, equipos, lineas, revisiones]);
+
   // Solo el ADMIN resuelve solicitudes, así que solo él paga la consulta.
   const { data: pendientes = 0 } = useQuery({
     queryKey: ['solicitudesPendientes'],
@@ -61,6 +87,7 @@ export function Sidebar({ open, onClose, colapsado, onToggle }: Props) {
     { to: '/', icon: LayoutDashboard, label: t('nav.dashboard') },
     { to: '/analitica', icon: ChartPie, label: t('nav.analytics'), roles: RUTA_ROLES['/analitica'] },
     { to: '/colaboradores', icon: Users, label: t('nav.collaborators'), roles: RUTA_ROLES['/colaboradores'] },
+    { to: '/salidas', icon: LogOut, label: t('nav.exits'), roles: RUTA_ROLES['/salidas'], distintivo: salidasPendientes },
     { to: '/inventario', icon: Boxes, label: t('nav.inventory') },
     { to: '/lineas', icon: Smartphone, label: t('nav.lines'), roles: RUTA_ROLES['/lineas'] },
     { to: '/tickets', icon: TicketCheck, label: t('nav.tickets'), roles: RUTA_ROLES['/tickets'] },

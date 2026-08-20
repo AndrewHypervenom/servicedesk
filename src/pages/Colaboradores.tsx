@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
 import { AnimatePresence, motion } from 'framer-motion';
 import {
-  Building2, CalendarDays, CornerDownRight, Download, LayoutGrid, Mail, MapPin, Pencil, Plus, Search,
+  Building2, CalendarDays, CornerDownRight, Download, LayoutGrid, LogOut, Mail, MapPin, Pencil, Plus, Search,
   Table2, Upload, UserCheck, UserMinus, UserPlus, Users, X,
 } from 'lucide-react';
 import { BotonBorrar } from '@/components/ui/BotonBorrar';
@@ -39,8 +39,10 @@ import { toast } from '@/components/ui/Toast';
 import { FichaColaborador } from '@/components/colaboradores/FichaColaborador';
 import { ImportarBaseModal } from '@/components/colaboradores/ImportarBaseModal';
 import {
-  actualizarColaborador, campoDuplicado, crearColaborador, listColaboradores, listSedes,
+  actualizarColaborador, campoDuplicado, crearColaborador, listColaboradores, listEquipos,
+  listLineas, listRevisionesSalida, listSedes,
 } from '@/lib/api';
+import { colorDias, detectarSalidas, sinResolver, type Salida } from '@/lib/salidas';
 import { useEditingPresence } from '@/lib/presence/hooks';
 import { CoeditBanner, ResourcePeersChip } from '@/components/presence';
 import {
@@ -114,6 +116,13 @@ export function Colaboradores() {
     queryKey: ['colabs'], queryFn: listColaboradores,
   });
   const { data: sedes = [] } = useQuery({ queryKey: ['sedes'], queryFn: listSedes });
+  // Las salidas no son un dato de la planta: se calculan cruzándola con el
+  // inventario. Se traen aquí para poder marcar en la lista a quién se le está
+  // yendo con un equipo, que es la pregunta que trae a esta pantalla la mitad
+  // de las veces.
+  const { data: equipos = [] } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
+  const { data: lineas = [] } = useQuery({ queryKey: ['lineas'], queryFn: listLineas, retry: false });
+  const { data: revisiones } = useQuery({ queryKey: ['revisionesSalida'], queryFn: listRevisionesSalida });
   const nombreSede = (c: Colaborador) => sedes.find((s) => s.id === c.sede_id)?.nombre ?? c.sede ?? null;
   // País de quien mira: filtra la planta y adelanta sus sedes en el desplegable.
   const pais = useFiltroPais();
@@ -127,6 +136,8 @@ export function Colaboradores() {
   const [ciudad, setCiudad] = useState('');
   const [area, setArea] = useState('');
   const [contrato, setContrato] = useState('');
+  /** Solo quienes salen (o ya salieron) con algo todavía a su nombre. */
+  const [soloSalidas, setSoloSalidas] = useState(false);
   const [orden, setOrden] = useState<Orden>('nombre');
   const [vista, setVista] = useState<'tarjetas' | 'tabla'>(
     () => (localStorage.getItem('colabsVista') as 'tarjetas' | 'tabla') ?? 'tarjetas',
@@ -166,6 +177,20 @@ export function Colaboradores() {
 
   const activo = (c: Colaborador) => (c.estado_interno ? esEstatusActivo(c.estado_interno) : c.activo);
 
+  const salidaDe = useMemo(() => {
+    const m = new Map<string, Salida>();
+    for (const s of detectarSalidas({
+      colaboradores: colabs, equipos, lineas, revisiones: revisiones?.filas ?? [],
+    })) m.set(s.colaborador.cedula, s);
+    return m;
+  }, [colabs, equipos, lineas, revisiones]);
+
+  /** Con equipo pendiente: es lo que hace la salida urgente, no la salida en sí. */
+  const salidaPendiente = (cedula: string) => {
+    const s = salidaDe.get(cedula);
+    return !!s && sinResolver(s);
+  };
+
   const kpis = useMemo(() => {
     const hace30 = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
     let activos = 0;
@@ -179,6 +204,11 @@ export function Colaboradores() {
     return { total: colabs.length, activos, inactivos: colabs.length - activos, sedes: sedesCubiertas.size, nuevos };
   }, [colabs]);
 
+  const conSalidaPendiente = useMemo(
+    () => [...salidaDe.values()].filter(sinResolver).length,
+    [salidaDe],
+  );
+
   const { resultados, directos } = useMemo(() => {
     const res: Resultado[] = [];
     for (const c of colabs) {
@@ -189,6 +219,7 @@ export function Colaboradores() {
       if (ciudad && c.ciudad !== ciudad) continue;
       if (area && c.area !== area) continue;
       if (contrato && c.termino_contrato !== contrato) continue;
+      if (soloSalidas && !salidaPendiente(c.cedula)) continue;
       // Todos los términos deben aparecer ("juan bogota" busca ambos); el
       // resultado dice además si fue por nombre/cédula o por otro campo.
       const r = evaluar(c, indice.get(c.cedula), terminos);
@@ -208,7 +239,7 @@ export function Colaboradores() {
     res.sort((a, b) => Number(b.directo) - Number(a.directo) || cmp[orden](a.colaborador, b.colaborador));
 
     return { resultados: res, directos: res.reduce((n, r) => n + (r.directo ? 1 : 0), 0) };
-  }, [colabs, indice, terminos, estado, pais, sedeF, ciudad, area, contrato, orden]);
+  }, [colabs, indice, terminos, estado, pais, sedeF, ciudad, area, contrato, orden, soloSalidas, salidaDe]);
 
   const filtrados = useMemo(() => resultados.map((r) => r.colaborador), [resultados]);
   /** El porqué de cada fila, para explicarlo donde se pinta. */
@@ -220,7 +251,7 @@ export function Colaboradores() {
 
   // Cualquier cambio de filtro reinicia la tanda: quedarse en la página 4 de un
   // resultado que ya no existe desorienta más de lo que ahorra.
-  useEffect(() => { setVisibles(PASO_VISIBLES); }, [qDiferida, estado, pais.valor, sedeF, ciudad, area, contrato, orden]);
+  useEffect(() => { setVisibles(PASO_VISIBLES); }, [qDiferida, estado, pais.valor, sedeF, ciudad, area, contrato, orden, soloSalidas]);
 
   // Carga la siguiente tanda al llegar al final del listado.
   const centinela = useRef<HTMLDivElement>(null);
@@ -235,8 +266,11 @@ export function Colaboradores() {
   }, [filtrados.length]);
 
   const mostrados = filtrados.slice(0, visibles);
-  const hayFiltros = !!(q || estado !== 'todos' || pais.activo || sedeF || ciudad || area || contrato);
-  const limpiar = () => { setQ(''); setEstado('todos'); pais.setValor(''); setSedeF(''); setCiudad(''); setArea(''); setContrato(''); };
+  const hayFiltros = !!(q || estado !== 'todos' || pais.activo || sedeF || ciudad || area || contrato || soloSalidas);
+  const limpiar = () => {
+    setQ(''); setEstado('todos'); pais.setValor(''); setSedeF(''); setCiudad(''); setArea(''); setContrato('');
+    setSoloSalidas(false);
+  };
 
   const exportar = () => {
     exportRowsExcel(
@@ -331,6 +365,26 @@ export function Colaboradores() {
         </span>
       ),
     },
+    {
+      key: 'salida',
+      header: t('exits.column'),
+      // Sin salida, al final: ordenar por esta columna es buscar quién se va.
+      sortValue: (c) => salidaDe.get(c.cedula)?.dias ?? Number.MAX_SAFE_INTEGER,
+      cell: (c) => {
+        const s = salidaDe.get(c.cedula);
+        if (!s) return <span className="text-ink-300 dark:text-ink-500">—</span>;
+        return (
+          <div className="min-w-0">
+            <span className={`badge ${colorDias(s.dias)}`}>
+              {s.dias === null
+                ? t('exits.noDate')
+                : s.dias < 0 ? t('exits.daysAgo', { count: -s.dias }) : t('exits.daysLeft', { count: s.dias })}
+            </span>
+            <div className="text-[11px] text-ink-400 mt-1 truncate">{t(`exits.motive.${s.motivo}`)}</div>
+          </div>
+        );
+      },
+    },
     { key: 'ingreso', header: t('colabField.ingreso'), sortValue: (c) => c.fecha_ingreso, cell: (c) => <span className="tabular-nums text-ink-500 dark:text-ink-300">{c.fecha_ingreso ? fmtDate(c.fecha_ingreso, i18n.language) : '—'}</span> },
     {
       key: 'acciones',
@@ -371,6 +425,7 @@ export function Colaboradores() {
     ciudad && { id: 'ciudad', texto: ciudad, quitar: () => setCiudad('') },
     area && { id: 'area', texto: area, quitar: () => setArea('') },
     contrato && { id: 'contrato', texto: estatusLegible(contrato), quitar: () => setContrato('') },
+    soloSalidas && { id: 'salidas', texto: t('exits.filterChip'), quitar: () => setSoloSalidas(false) },
     q && { id: 'q', texto: `"${q}"`, quitar: () => setQ('') },
   ].filter(Boolean) as { id: string; texto: string; quitar: () => void }[];
 
@@ -380,6 +435,10 @@ export function Colaboradores() {
     { id: 'inactivos', label: t('collaborators.kpiInactive'), n: kpis.inactivos, icon: UserMinus, tono: 'from-ink-300 to-ink-500', al: () => setEstado('inactivos') },
     { id: 'nuevos', label: t('collaborators.kpiNew'), n: kpis.nuevos, icon: UserPlus, tono: 'from-magenta-400 to-magenta-600', al: () => setOrden('ingreso') },
     { id: 'sedes', label: t('collaborators.kpiSedes'), n: kpis.sedes, icon: Building2, tono: 'from-sky-400 to-sky-600', al: () => {} },
+    {
+      id: 'salidas', label: t('exits.kpiPending'), n: conSalidaPendiente, icon: LogOut,
+      tono: 'from-red-400 to-red-600', al: () => setSoloSalidas(true),
+    },
   ];
 
   return (
@@ -396,7 +455,7 @@ export function Colaboradores() {
       />
 
       {/* ------------------------------------------------------------ KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mb-5">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-3 mb-5">
         {tarjetasKpi.map((k, i) => (
           <motion.button
             key={k.id}
@@ -653,6 +712,11 @@ export function Colaboradores() {
                   <span className={`badge ${colorEstatus(c.estado_interno ?? (c.activo ? 'ACTIVO' : ''))}`}>
                     {c.estado_interno ? estatusLegible(c.estado_interno) : c.activo ? t('collaborators.active') : t('collaborators.inactive')}
                   </span>
+                  {salidaPendiente(c.cedula) && (
+                    <span className="badge bg-danger/12 text-red-600 dark:text-danger">
+                      <LogOut size={12} /> {t('exits.cardBadge')}
+                    </span>
+                  )}
                   {c.area && <span className="badge bg-ink-100 dark:bg-white/10 text-ink-600 dark:text-ink-200">{c.area}</span>}
                 </div>
 
