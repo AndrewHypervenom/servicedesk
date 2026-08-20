@@ -621,7 +621,10 @@ export async function borrarAvatar(perfilId: string): Promise<void> {
 
 export async function listActas(): Promise<Acta[]> {
   const { data } = await supabase.from('actas').select('*').order('creado_en', { ascending: false });
-  return (data as Acta[]) ?? [];
+  // Las retiradas se descartan aquí y no con un `.is('eliminado_en', null)` en la
+  // consulta: así la pantalla sigue funcionando en una base donde la columna
+  // todavía no existe (venía sin ella hasta 20260820_actas_borrado_suave.sql).
+  return ((data as Acta[]) ?? []).filter((a) => !a.eliminado_en);
 }
 
 /**
@@ -843,9 +846,13 @@ export async function ocultarRegistro(p: {
   solicitadoPor: string;
 }): Promise<void> {
   const col = p.entidad === 'colaboradores' ? 'cedula' : 'id';
+  // `eliminado_por` no es solo para saber quién fue: las políticas
+  // "ve lo que tú ocultaste" se apoyan en él. Sin esa firma, la fila recién
+  // ocultada deja de ser visible para quien la ocultó y la base tumba el propio
+  // UPDATE (ver supabase/migrations/20260820_retirar_ve_lo_propio.sql).
   const { error } = await supabase
     .from(p.entidad)
-    .update({ eliminado_en: new Date().toISOString() })
+    .update({ eliminado_en: new Date().toISOString(), eliminado_por: p.solicitadoPor })
     .eq(col, p.id);
   if (error) throw error;
 
@@ -864,7 +871,7 @@ export async function ocultarRegistro(p: {
   if (errSol) {
     // Sin la solicitud, el registro quedaría oculto y sin que nadie pueda
     // resolverlo: invisible para quien lo ocultó y sin entrada en la cola.
-    await supabase.from(p.entidad).update({ eliminado_en: null }).eq(col, p.id);
+    await supabase.from(p.entidad).update({ eliminado_en: null, eliminado_por: null }).eq(col, p.id);
     throw errSol;
   }
 }
@@ -891,7 +898,9 @@ export async function contarSolicitudesPendientes(): Promise<number> {
 export async function restaurarRegistro(s: SolicitudBorrado, adminId: string): Promise<void> {
   const col = s.entidad === 'colaboradores' ? 'cedula' : 'id';
   const { error } = await supabase
-    .from(s.entidad).update({ eliminado_en: null }).eq(col, s.registro_id);
+    .from(s.entidad)
+    .update({ eliminado_en: null, eliminado_por: null })
+    .eq(col, s.registro_id);
   if (error) throw error;
 
   const { error: e2 } = await supabase.from('solicitudes_borrado')
@@ -926,6 +935,19 @@ export interface ActaEnPlan {
 export async function getPlanDeBorrado(
   entidad: EntidadBorrable, registroId: string,
 ): Promise<PlanDeBorrado> {
+  // Un acta no arrastra nada: sus movimientos sobreviven con `acta_id` en NULL
+  // (lo hace el RPC `eliminar_acta`). Lo único que se lleva por delante es su
+  // propio documento, así que el plan se arma aquí y no se molesta a la base.
+  if (entidad === 'actas') {
+    const { data, error } = await supabase.from('actas')
+      .select('id, consecutivo, firmado, pdf_url, archivo_firmado_url')
+      .eq('id', registroId).maybeSingle();
+    if (error) throw error;
+    return {
+      movimientos: 0, equipos_asignados: 0, actas_compartidas: [],
+      actas: data ? [data as ActaEnPlan] : [],
+    };
+  }
   const { data, error } = await supabase.rpc('plan_de_borrado', {
     p_entidad: entidad, p_registro_id: registroId,
   });
@@ -943,6 +965,13 @@ export async function getPlanDeBorrado(
 export async function eliminarEnCascada(
   entidad: EntidadBorrable, registroId: string, plan: PlanDeBorrado,
 ): Promise<void> {
+  // El acta tiene su propio camino de borrado (documentos + RPC `eliminar_acta`),
+  // que es el que respeta la inmutabilidad de `movimientos`.
+  if (entidad === 'actas') {
+    const a = plan.actas.find((x) => x.id === registroId) ?? plan.actas[0];
+    if (a) await eliminarActaConDocumentos(a as unknown as Acta);
+    return;
+  }
   const rutas = plan.actas
     .flatMap((a) => [rutaEnBucketActas(a.pdf_url), rutaEnBucketActas(a.archivo_firmado_url)])
     .filter((r): r is string => !!r);

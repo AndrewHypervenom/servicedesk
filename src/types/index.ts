@@ -219,7 +219,7 @@ export interface Ticket {
 }
 
 /** Entidades sobre las que existe borrado suave. */
-export type EntidadBorrable = 'equipos' | 'colaboradores' | 'proveedores';
+export type EntidadBorrable = 'equipos' | 'colaboradores' | 'proveedores' | 'actas';
 
 export type EstadoSolicitud = 'PENDIENTE' | 'APROBADA' | 'RESTAURADA';
 
@@ -285,6 +285,9 @@ export interface Acta {
   /** Perfil del técnico que generó el acta; queda fijo aunque la abra otro. */
   generado_por?: string | null;
   creado_en: string;
+  /** Retirada de la vista a la espera de que el ADMIN resuelva la solicitud. */
+  eliminado_en?: string | null;
+  eliminado_por?: string | null;
 }
 
 /** Lo que el RPC `tecnico_de_acta` expone del autor de un acta. */

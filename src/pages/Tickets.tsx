@@ -65,6 +65,7 @@ import { exportarPdf } from '@/lib/exportarGrafico';
 import { useEsOscuro } from '@/lib/useEsOscuro';
 import { fmtDate } from '@/lib/format';
 import { useApp } from '@/store/useApp';
+import { puedeRetirar } from '@/lib/roles';
 import { ordenarSedesPorPais, useFiltroPais } from '@/lib/pais';
 import type { EstadoTicket, PrioridadTicket, Sede, Ticket } from '@/types';
 
@@ -113,8 +114,8 @@ export function Tickets() {
   const puedeEditar = canEdit();
   const puedeImportar = can('ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO');
   // Retirar es reversible (borrado suave) pero saca la fila del histórico de la
-  // mesa: lo deciden ADMIN y Jefe.
-  const puedeRetirar = can('ADMIN', 'LIDER');
+  // mesa: lo deciden quienes mandan en ella (ver `puedeRetirar`).
+  const retirarPermitido = puedeRetirar(perfil?.rol);
   // Enlazar un ticket con una persona es decir quién hizo un trabajo, y de eso
   // responde quien manda en la mesa: ADMIN, Jefe y Líder de sede. El Técnico
   // carga el archivo igual, pero sin atribuir por parecido de nombre.
@@ -648,7 +649,7 @@ export function Tickets() {
               <Pencil size={15} />
             </button>
           )}
-          {puedeRetirar && (
+          {retirarPermitido && (
             <button
               onClick={() => setRetirando(x)} title={t('tickets.retire')}
               className="p-1.5 rounded-lg text-ink-400 hover:text-danger hover:bg-danger/10 transition"

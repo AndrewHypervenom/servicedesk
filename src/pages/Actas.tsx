@@ -1,19 +1,19 @@
 import { useMemo, useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { Trans, useTranslation } from 'react-i18next';
-import { FileSignature, ExternalLink, CheckCircle2, Mail, Printer, FileCheck2, Eye, SearchX, UserRound, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
-import { listActas, listEquipos, listColaboradores, getTecnicoDeActa, getAutoresDeActas, eliminarActaConDocumentos } from '@/lib/api';
+import { useQuery } from '@tanstack/react-query';
+import { useTranslation } from 'react-i18next';
+import { FileSignature, ExternalLink, CheckCircle2, Mail, Printer, FileCheck2, Eye, SearchX, UserRound } from 'lucide-react';
+import { listActas, listEquipos, listColaboradores, getTecnicoDeActa, getAutoresDeActas } from '@/lib/api';
 import { generarActaPdf, abrirBlob, imprimirBlob, type ActaItem } from '@/lib/pdf';
 import { PageHeader } from '@/components/ui/PageHeader';
 import { SearchInput } from '@/components/ui/SearchInput';
 import { Badge } from '@/components/ui/Badge';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { Tooltip } from '@/components/ui/Tooltip';
-import { Modal } from '@/components/ui/Modal';
+import { BotonBorrar } from '@/components/ui/BotonBorrar';
 import { SkeletonRows } from '@/components/ui/Skeleton';
 import { toast } from '@/components/ui/Toast';
 import { fmtDate, fmtSerial } from '@/lib/format';
-import { esAdmin } from '@/lib/roles';
+import { puedeRetirar } from '@/lib/roles';
 import { useApp } from '@/store/useApp';
 import type { Acta } from '@/types';
 
@@ -24,28 +24,13 @@ export function Actas() {
   const { data: equipos = [] } = useQuery({ queryKey: ['equipos'], queryFn: listEquipos });
   const { data: colaboradores = [] } = useQuery({ queryKey: ['colaboradores'], queryFn: listColaboradores });
   const { data: autores } = useQuery({ queryKey: ['actas', 'autores'], queryFn: getAutoresDeActas });
-  const qc = useQueryClient();
   const [q, setQ] = useState('');
-  // Solo el ADMIN borra actas. Esto oculta el botón; la barrera real es el
-  // trigger `actas_borrado_solo_admin`, porque la API REST es alcanzable sin
-  // pasar por esta pantalla.
-  const puedeEliminar = esAdmin(perfil?.rol);
-  const [aBorrar, setABorrar] = useState<Acta | null>(null);
-  const [borrando, setBorrando] = useState(false);
-
-  const confirmarBorrado = async () => {
-    if (!aBorrar) return;
-    setBorrando(true);
-    try {
-      await eliminarActaConDocumentos(aBorrar);
-      toast.success(t('acta.deleteDone', { consecutivo: aBorrar.consecutivo ?? '' }));
-      setABorrar(null);
-      qc.invalidateQueries({ queryKey: ['actas'] });
-      qc.invalidateQueries({ queryKey: ['movimientos'] });
-    } catch (e: any) {
-      toast.error(e?.message ?? t('common.error'));
-    } finally { setBorrando(false); }
-  };
+  // Retirar un acta la saca del listado y abre la solicitud que el ADMIN
+  // resuelve: el documento no se destruye hasta que él lo aprueba. Lo pueden
+  // pedir los tres roles de mando (ver `puedeRetirar`); el borrado definitivo
+  // lo sigue impidiendo el trigger `actas_borrado_solo_admin`, que es la
+  // barrera real porque la API REST es alcanzable sin pasar por aquí.
+  const puedeEliminar = puedeRetirar(perfil?.rol);
 
   const equiposById = useMemo(() => new Map(equipos.map((e) => [e.id, e])), [equipos]);
   const colabByCedula = useMemo(() => new Map(colaboradores.map((c) => [c.cedula, c])), [colaboradores]);
@@ -204,11 +189,13 @@ export function Actas() {
                         </Tooltip>
                       )}
                       {puedeEliminar && (
-                        <Tooltip label={t('acta.tipDelete')} hint={t('acta.tipDeleteHint')}>
-                          <button className="btn-ghost !p-2 text-danger" aria-label={t('acta.tipDelete')} onClick={() => setABorrar(a)}>
-                            <Trash2 size={16} />
-                          </button>
-                        </Tooltip>
+                        <BotonBorrar
+                          entidad="actas"
+                          id={a.id}
+                          etiqueta={a.consecutivo ?? a.id}
+                          invalidar={['actas', 'movimientos', 'solicitudes']}
+                          className="btn-ghost !p-2 text-danger"
+                        />
                       )}
                     </div>
                   </td>
@@ -220,38 +207,6 @@ export function Actas() {
         </div>
       )}
 
-      <Modal
-        open={!!aBorrar}
-        onClose={() => !borrando && setABorrar(null)}
-        title={t('acta.deleteTitle')}
-        size="sm"
-      >
-        <div className="space-y-4">
-          <div className="flex items-start gap-3 p-3 rounded-xl bg-danger/10 border border-danger/25">
-            <AlertTriangle size={18} className="text-danger shrink-0 mt-0.5" />
-            <div className="text-sm leading-snug">
-              {/* A diferencia del borrado de equipos o colaboradores, esto no
-                  oculta: destruye el acta y sus PDF. El aviso lo dice sin
-                  rodeos porque no hay pantalla de restauración a la que acudir. */}
-              <Trans
-                i18nKey="acta.deleteWarn"
-                values={{ consecutivo: aBorrar?.consecutivo ?? '' }}
-                components={[<strong />]}
-              />
-            </div>
-          </div>
-          <p className="text-sm text-ink-500">{t('acta.deleteKeepsHistory')}</p>
-          <div className="flex justify-end gap-2">
-            <button onClick={() => setABorrar(null)} disabled={borrando} className="btn-secondary">
-              {t('common.cancel')}
-            </button>
-            <button onClick={confirmarBorrado} disabled={borrando} className="btn-danger">
-              {borrando ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
-              {t('common.delete')}
-            </button>
-          </div>
-        </div>
-      </Modal>
     </div>
   );
 }

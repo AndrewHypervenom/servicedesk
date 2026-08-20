@@ -61,6 +61,36 @@ export function borradoRequiereAprobacion(rol: RolUsuario | undefined): boolean 
   return rol === 'LIDER' || rol === 'JEFE_SEDE' || rol === 'TECNICO';
 }
 
+/**
+ * Quién puede retirar de la vista un ticket o una línea móvil.
+ *
+ * Es el mismo mando de la mesa que decide en el resto del sitio: ADMIN, Jefe
+ * (LIDER) y Líder de sede (JEFE_SEDE). El retiro es un borrado suave —la fila
+ * sigue en la base y el ADMIN la restaura desde su pantalla—, así que lo que se
+ * arriesga con abrirlo es que algo desaparezca del listado, no que se pierda.
+ * El Técnico se queda fuera: carga y edita, pero no saca del histórico.
+ */
+export function puedeRetirar(rol: RolUsuario | undefined): boolean {
+  return rol === 'ADMIN' || rol === 'LIDER' || rol === 'JEFE_SEDE';
+}
+
+/**
+ * Quién puede entregar un segundo portátil a la misma persona.
+ *
+ * La regla sigue siendo una: un colaborador, un portátil. La excepción existe
+ * para casos contados (gerencia) y por eso no la tiene cualquiera, pero sí
+ * quien responde por la entrega: ADMIN, Jefe (LIDER) y Líder de sede
+ * (JEFE_SEDE). El Técnico entrega, no autoriza excepciones.
+ *
+ * Ojo: esta regla vive SOLO aquí. `asignacion_guard`, el trigger de la base,
+ * comprueba la sede del colaborador y nada más, así que un segundo portátil
+ * entra sin protestar por la API REST. Si alguna vez tiene que ser una barrera
+ * de verdad, hay que llevarla a la base.
+ */
+export function puedeSegundoPortatil(rol: RolUsuario | undefined): boolean {
+  return rol === 'ADMIN' || rol === 'LIDER' || rol === 'JEFE_SEDE';
+}
+
 export function esAdmin(rol: RolUsuario | undefined): boolean {
   return rol === 'ADMIN';
 }

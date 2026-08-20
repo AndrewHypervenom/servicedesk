@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ShieldQuestion, Undo2, Trash2, Loader2, Boxes, Users, Truck, CheckCircle2, Clock, SearchX,
-  AlertTriangle,
+  AlertTriangle, FileSignature,
 } from 'lucide-react';
 import { listSolicitudes, listPerfiles, restaurarRegistro, eliminarDefinitivo, getPlanDeBorrado } from '@/lib/api';
 import type { PlanDeBorrado } from '@/lib/api';
@@ -19,10 +19,11 @@ import { fmtDate } from '@/lib/format';
 import type { SolicitudBorrado, EntidadBorrable } from '@/types';
 
 const ICONO: Record<EntidadBorrable, React.ElementType> = {
-  equipos: Boxes, colaboradores: Users, proveedores: Truck,
+  equipos: Boxes, colaboradores: Users, proveedores: Truck, actas: FileSignature,
 };
 const NOMBRE_KEY: Record<EntidadBorrable, string> = {
-  equipos: 'requests.entityEquipo', colaboradores: 'requests.entityColaborador', proveedores: 'requests.entityProveedor',
+  equipos: 'requests.entityEquipo', colaboradores: 'requests.entityColaborador',
+  proveedores: 'requests.entityProveedor', actas: 'requests.entityActa',
 };
 
 export function Solicitudes() {
@@ -59,7 +60,7 @@ export function Solicitudes() {
   const refrescar = () => {
     qc.invalidateQueries({ queryKey: ['solicitudes'] });
     // Los listados de datos también cambian: al restaurar reaparece la fila.
-    ['equipos', 'colaboradores', 'proveedores'].forEach((k) =>
+    ['equipos', 'colaboradores', 'proveedores', 'actas'].forEach((k) =>
       qc.invalidateQueries({ queryKey: [k] }));
   };
 

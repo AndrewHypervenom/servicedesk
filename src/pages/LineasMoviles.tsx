@@ -65,6 +65,7 @@ import { paletaPara } from '@/lib/paletaGraficos';
 import { useEsOscuro } from '@/lib/useEsOscuro';
 import { fmtDateTime } from '@/lib/format';
 import { useApp } from '@/store/useApp';
+import { puedeRetirar } from '@/lib/roles';
 import { ordenarSedesPorPais, useFiltroPais } from '@/lib/pais';
 import type { Colaborador, LineaMovil, Sede } from '@/types';
 
@@ -103,7 +104,7 @@ export function LineasMoviles() {
   const puedeImportar = can('ADMIN', 'LIDER', 'JEFE_SEDE', 'TECNICO');
   // Retirar una línea del inventario es una decisión de inventario, no de
   // operación diaria: la toman ADMIN y Jefe, y es reversible (borrado suave).
-  const puedeRetirar = can('ADMIN', 'LIDER');
+  const retirarPermitido = puedeRetirar(perfil?.rol);
 
   const { data: todas = [], refetch, isLoading, error } = useQuery({
     queryKey: ['lineas'], queryFn: listLineas,
@@ -543,7 +544,7 @@ export function LineasMoviles() {
               <Pencil size={14} />
             </button>
           )}
-          {puedeRetirar && (
+          {retirarPermitido && (
             <button onClick={() => setRetirando(l)} title={t('lines.retire')}
               className="p-1.5 rounded-lg text-danger hover:bg-danger/10 transition">
               <Trash2 size={14} />
@@ -829,7 +830,7 @@ export function LineasMoviles() {
                       <Pencil size={15} />
                     </button>
                   )}
-                  {puedeRetirar && (
+                  {retirarPermitido && (
                     <button onClick={() => setRetirando(l)} title={t('lines.retire')}
                       className="p-1.5 rounded-lg text-danger hover:bg-danger/10 transition">
                       <Trash2 size={15} />

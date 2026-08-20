@@ -17,6 +17,7 @@ import { EstadoBadge, FisicoBadge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { toast } from '@/components/ui/Toast';
 import { useApp } from '@/store/useApp';
+import { puedeSegundoPortatil } from '@/lib/roles';
 import { useEditingPresence } from '@/lib/presence/hooks';
 import { CoeditBanner } from '@/components/presence';
 import type { Acta, Colaborador, Equipo } from '@/types';
@@ -67,19 +68,20 @@ export function Asignar() {
   const permitido = !colab || puedeAsignarASede(colab.sede_id);
 
   // Regla: un colaborador no puede terminar con más de un portátil. La excepción
-  // (p. ej. gerentes) solo la puede autorizar un ADMIN, que asigna directamente.
+  // (p. ej. gerentes) la autoriza quien responde por la entrega —ADMIN, Jefe y
+  // Líder de sede—, que asigna directamente.
   // Contamos los portátiles ya en su poder más los portátiles de esta entrega.
-  const esAdmin = perfil?.rol === 'ADMIN';
+  const autorizaSegundo = puedeSegundoPortatil(perfil?.rol);
   const portatilesActuales = colab
     ? equipos.filter((e) => e.cedula_asignado === colab.cedula &&
         e.tipo === 'PORTATIL' && e.estado_asignacion === 'ASIGNADO').length
     : 0;
   const portatilesSeleccionados = seleccionados.filter((e) => e.tipo === 'PORTATIL').length;
   const totalPortatiles = portatilesActuales + portatilesSeleccionados;
-  // Más de un portátil en total: bloqueado para todos salvo el ADMIN.
-  const excedePortatiles = totalPortatiles > 1 && !esAdmin;
-  // Aviso informativo cuando el ADMIN usa su excepción.
-  const adminExcedePortatiles = totalPortatiles > 1 && esAdmin;
+  // Más de un portátil en total: bloqueado salvo para quien puede autorizarlo.
+  const excedePortatiles = totalPortatiles > 1 && !autorizaSegundo;
+  // Aviso informativo cuando se usa la excepción.
+  const usaExcepcionPortatil = totalPortatiles > 1 && autorizaSegundo;
   const sedeColab = sedes.find((s) => s.id === colab?.sede_id)?.nombre ?? colab?.sede;
 
   const buscar = async () => {
@@ -501,7 +503,7 @@ export function Asignar() {
                 {' '}{t('assign.requiereAdmin')}
               </motion.div>
             )}
-            {adminExcedePortatiles && (
+            {usaExcepcionPortatil && (
               <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                 className="mt-4 p-4 rounded-2xl bg-warning/8 border border-warning/20 text-sm text-amber-600 dark:text-warning">
                 {t('assign.adminOverridePortatil')}

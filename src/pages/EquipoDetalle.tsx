@@ -79,6 +79,14 @@ export function EquipoDetalle() {
   const dias = diasRestantes(equipo.fecha_vencimiento_contrato);
 
   const infoRows: [string, React.ReactNode][] = [
+    // Quién lo tiene va de primero: es lo que se viene a mirar. La tarjeta
+    // lateral trae la ficha completa, pero en el móvil queda debajo del todo.
+    ...(equipo.cedula_asignado
+      ? [[t('equipo.assignedTo'),
+          <span>{colab?.nombre ?? '—'}
+            <span className="text-ink-400 font-mono ml-2">C.C. {equipo.cedula_asignado}</span>
+          </span>] as [string, React.ReactNode]]
+      : []),
     [t('equipo.serial'), <span className="font-mono">{fmtSerial(equipo.serial)}</span>],
     [t('equipo.tipo'), t(`tipo.${equipo.tipo}`)],
     [t('equipo.propiedad'), <span>{t(`propiedad.${equipo.propiedad}`)}{equipo.proveedor_propietario && ` · ${equipo.proveedor_propietario}`}</span>],
