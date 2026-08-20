@@ -546,6 +546,12 @@ export function ImportarModal({ open, onClose, onImportado }: Props) {
               </p>
             )}
 
+            {salida.movimientosOmitidos > 0 && (
+              <p className="text-center text-sm text-ink-400 mb-3">
+                {salida.movimientosOmitidos} movimientos ya estaban en el historial y no se duplicaron.
+              </p>
+            )}
+
             <div className="flex justify-center gap-2">
               <button onClick={reiniciar} className="btn-secondary"><RotateCcw size={15} /> Importar otro</button>
               <button onClick={cerrar} className="btn-primary">Ver inventario</button>

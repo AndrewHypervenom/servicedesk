@@ -98,6 +98,14 @@ export async function aplicarImportacion(
     movimientos_creados: number;
   };
 
+  // Los movimientos que ya estaban en el historial no se vuelven a insertar: los
+  // descarta `trg_mov_importado_sin_duplicar` (ver la migración
+  // supabase/migrations/20260819_movimientos_importados_sin_duplicar.sql). La
+  // función no los cuenta aparte, pero la diferencia contra lo que se envió dice
+  // cuántos fueron; así volver a subir el mismo libro se explica en vez de
+  // parecer que se perdieron filas.
+  const movimientosOmitidos = Math.max(0, movimientos.length - r.movimientos_creados);
+
   // El catálogo de marcas alimenta el formulario de alta. Va aparte porque no es
   // parte del inventario: si falla, la importación sigue siendo válida.
   onProgreso?.({ etapa: 'catalogos' });
@@ -112,5 +120,6 @@ export async function aplicarImportacion(
     equiposCreados: r.equipos_creados,
     equiposOmitidos: r.equipos_omitidos,
     movimientosCreados: r.movimientos_creados,
+    movimientosOmitidos,
   };
 }

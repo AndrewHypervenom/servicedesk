@@ -195,4 +195,6 @@ export interface ResultadoAplicacion {
   equiposCreados: number;
   equiposOmitidos: number;
   movimientosCreados: number;
+  /** Movimientos que ya estaban en el historial: se enviaron y no se insertaron. */
+  movimientosOmitidos: number;
 }
